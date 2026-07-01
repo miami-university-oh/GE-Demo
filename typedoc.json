@@ -1,0 +1,42 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+
+  "entryPoints": [
+    "client/src/App.tsx",
+    "client/src/main.tsx",
+    "client/src/const.ts",
+    "client/src/components",
+    "client/src/contexts",
+    "client/src/hooks",
+    "client/src/lib",
+    "client/src/pages",
+    "shared/const.ts"
+  ],
+  "entryPointStrategy": "expand",
+
+  "out": "docs/typedoc",
+
+  "plugin": ["typedoc-plugin-markdown"],
+
+  "outputFileStrategy": "modules",
+  "flattenOutputFiles": false,
+  "fileExtension": ".md",
+  "indexFormat": "table",
+  "parametersFormat": "table",
+  "propertiesFormat": "table",
+  "enumMembersFormat": "table",
+  "typeDeclarationFormat": "table",
+  "useCodeBlocks": true,
+
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeExternals": true,
+  "excludeNotDocumented": false,
+
+  "readme": "none",
+  "githubPages": false,
+
+  "tsconfig": "./tsconfig.json",
+
+  "name": "IIoT Building Dashboard — TypeScript API"
+}

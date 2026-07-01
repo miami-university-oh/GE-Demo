@@ -1,0 +1,14 @@
+# ---------------------------------------------------------------------------
+# Documentation dependencies
+# Install with:  pip install -r docs-requirements.txt
+# ---------------------------------------------------------------------------
+
+# Core MkDocs + Material theme
+mkdocs>=1.6.0
+mkdocs-material>=9.5.0
+
+# Python docstring extraction
+mkdocstrings[python]>=0.25.0      # pulls in griffe automatically
+
+# Optional nav auto-builder (uncomment if you remove the manual nav: block)
+# mkdocs-awesome-pages-plugin>=2.9.0
