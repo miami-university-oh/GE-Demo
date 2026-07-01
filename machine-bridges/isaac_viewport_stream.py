@@ -5,19 +5,20 @@ Run this in Isaac Sim's Script Editor (or as an extension script).
 It captures the active viewport and serves an MJPEG stream at http://localhost:8211
 
 Usage (in Isaac Sim Script Editor):
-    exec(open(r"C:\Users\yousifi\Documents\GE Demo\machine-bridges\isaac_viewport_stream.py").read())
+    exec(open("C:\\Users\\yousifi\\Documents\\GE Demo\\machine-bridges\\isaac_viewport_stream.py").read())
 """
 
+import io
 import threading
 import time
-import io
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 import numpy as np
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 try:
+    import carb
     import omni.kit.viewport.utility as vp_util
     from omni.kit.widget.viewport.capture import ByteCapture
-    import carb
 except ImportError:
     raise RuntimeError("This script must run inside Isaac Sim")
 
@@ -35,8 +36,8 @@ def _capture_viewport_loop():
     global _latest_jpeg, _running
 
     try:
-        import omni.renderer_capture
         import omni.kit.viewport.utility as vp_util
+        import omni.renderer_capture
     except Exception as e:
         carb.log_error(f"Viewport stream: import error: {e}")
         return
@@ -51,6 +52,7 @@ def _capture_viewport_loop():
                 continue
 
             import asyncio
+
             import omni.kit.app
 
             # Use the capture_viewport_to_buffer approach
@@ -60,19 +62,23 @@ def _capture_viewport_loop():
             def on_capture_completed(buffer, buffer_size, width, height, fmt):
                 try:
                     import ctypes
+
                     # buffer is a ctypes pointer, copy to numpy
                     arr = np.ctypeslib.as_array(
                         ctypes.cast(buffer, ctypes.POINTER(ctypes.c_uint8)),
-                        shape=(height, width, 4)
+                        shape=(height, width, 4),
                     )
                     # RGBA -> BGR for cv2
                     import cv2
+
                     bgr = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
                     # Resize for streaming
                     if width > 1280:
                         scale = 1280 / width
                         bgr = cv2.resize(bgr, (1280, int(height * scale)))
-                    _, buf = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                    _, buf = cv2.imencode(
+                        ".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
+                    )
                     jpeg_data[0] = buf.tobytes()
                 except Exception as e:
                     carb.log_warn(f"Viewport capture encode error: {e}")
@@ -123,7 +129,9 @@ img{max-width:100%;max-height:100%}</style></head>
 
         elif self.path == "/feed":
             self.send_response(200)
-            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header(
+                "Content-Type", "multipart/x-mixed-replace; boundary=frame"
+            )
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             while _running:
@@ -136,8 +144,11 @@ img{max-width:100%;max-height:100%}</style></head>
                     self.wfile.write(
                         b"--frame\r\n"
                         b"Content-Type: image/jpeg\r\n"
-                        b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n"
-                        + frame + b"\r\n"
+                        b"Content-Length: "
+                        + str(len(frame)).encode()
+                        + b"\r\n\r\n"
+                        + frame
+                        + b"\r\n"
                     )
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
