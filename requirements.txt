@@ -1,0 +1,15 @@
+# Python dependencies for all bridge and camera scripts
+# Install with: pip install -r requirements.txt
+
+# Machine Bridges (haas_bridge.py, ur5e_bridge.py)
+websockets
+flask
+
+# Camera Streaming (amcrest_yolo_stream.py, realsense_yolo_stream.py, realsense_stream.py, safety_monitor.py)
+ultralytics
+opencv-python
+numpy
+pyrealsense2
+
+# Safety Monitor (safety_monitor.py)
+ur-rtde
