@@ -19,6 +19,16 @@ interface BuildingElevationProps {
 const ISO_COS = Math.cos(Math.PI / 6);
 const ISO_SIN = Math.sin(Math.PI / 6);
 
+/**
+ * Projects world-space coordinates (x, y, z) into a 2D isometric screen
+ * position using a standard 30° cabinet-projection. The x and y axes are
+ * flattened by ISO_COS / ISO_SIN; z is subtracted to lift points vertically.
+ *
+ * @param x - World x coordinate.
+ * @param y - World y coordinate.
+ * @param z - World z coordinate (positive = up).
+ * @returns `[screenX, screenY]` tuple in isometric screen space.
+ */
 function iso(x: number, y: number, z: number): [number, number] {
   return [
     (x - y) * ISO_COS,
@@ -38,11 +48,23 @@ const BASEMENT_H = 10;    // world units for basement
 const WALL_THICKNESS = 0.5;
 
 // Z levels: basement bottom = -BASEMENT_H, basement top = 0, floor1 top = FLOOR_H, floor2 top = 2*FLOOR_H
+/**
+ * Returns the world-space z coordinate of the bottom face of a floor slab.
+ * Basement bottom is at `-BASEMENT_H`; floor 1 base is at `0`; floor 2 base at `FLOOR_H`.
+ *
+ * @param floor - Floor level (0 = Basement, 1 = Floor 1, 2 = Floor 2).
+ */
 function floorZBottom(floor: Floor): number {
   if (floor === 0) return -BASEMENT_H;
   if (floor === 1) return 0;
   return FLOOR_H;
 }
+/**
+ * Returns the world-space z coordinate of the top face of a floor slab.
+ * Basement top is at `0` (ground level); floor 1 top at `FLOOR_H`; floor 2 top at `2 * FLOOR_H`.
+ *
+ * @param floor - Floor level.
+ */
 function floorZTop(floor: Floor): number {
   if (floor === 0) return 0;
   if (floor === 1) return FLOOR_H;
@@ -116,15 +138,52 @@ const WING_LABEL: Record<Wing, string> = {
   west:  '#60a5fa',
 };
 
+/**
+ * Converts a world-space point to SVG screen coordinates by scaling by
+ * `SCALE`, applying the isometric projection, then offsetting by the
+ * canvas center (cx, cy).
+ *
+ * @param wx - World x.
+ * @param wy - World y.
+ * @param wz - World z.
+ * @param cx - Canvas center x offset.
+ * @param cy - Canvas center y offset.
+ * @returns `[svgX, svgY]` ready to use in an SVG element.
+ */
 function projectPoint(wx: number, wy: number, wz: number, cx: number, cy: number): [number, number] {
   const [ix, iy] = iso(wx * SCALE, wy * SCALE, wz * SCALE);
   return [cx + ix, cy + iy];
 }
 
+/**
+ * Builds an SVG `points` string for a horizontal polygon (floor/ceiling slab
+ * face) at a constant world z level by projecting each world (x, y) vertex.
+ *
+ * @param pts - Array of (world x, world y) vertices forming the polygon.
+ * @param z   - World z level for all vertices (constant horizontal face).
+ * @param cx  - Canvas center x offset.
+ * @param cy  - Canvas center y offset.
+ * @returns Space-separated `"x,y"` pairs suitable for an SVG `<polygon points>`.
+ */
 function floorPolygon(pts: [number, number][], z: number, cx: number, cy: number): string {
   return pts.map(([x, y]) => projectPoint(x, y, z, cx, cy).join(',')).join(' ');
 }
 
+/**
+ * Builds an SVG `points` string for a vertical wall quad between two world
+ * (x, y) points running from `zBottom` to `zTop`. Returns four projected
+ * corners: bottom-left, bottom-right, top-right, top-left.
+ *
+ * @param x1      - World x of the first wall edge.
+ * @param y1      - World y of the first wall edge.
+ * @param x2      - World x of the second wall edge.
+ * @param y2      - World y of the second wall edge.
+ * @param zBottom - World z of the base of the wall.
+ * @param zTop    - World z of the top of the wall.
+ * @param cx      - Canvas center x offset.
+ * @param cy      - Canvas center y offset.
+ * @returns Space-separated `"x,y"` pairs for an SVG `<polygon>`.
+ */
 function vertFace(
   x1: number, y1: number,
   x2: number, y2: number,
@@ -159,6 +218,12 @@ interface WindowProps {
   count: number; zBot: number; zTop: number; cx: number; cy: number;
 }
 
+/**
+ * Renders a row of `count` evenly spaced window quads on an isometric wall
+ * face. Each window spans 60% of the inter-window spacing and is vertically
+ * centred in the floor's z range. Windows are drawn as translucent blue
+ * polygons with a lighter border.
+ */
 function WindowRow({ x1, y1, x2, y2, count, zBot, zTop, cx, cy }: WindowProps) {
   const zMid = (zBot + zTop) / 2;
   const wh = (zTop - zBot) * 0.35;
@@ -181,6 +246,15 @@ function WindowRow({ x1, y1, x2, y2, count, zBot, zTop, cx, cy }: WindowProps) {
   return <>{windows}</>;
 }
 
+/**
+ * Derives a single aggregate ZoneStatus for a wing + floor combination.
+ * Returns `critical` if any zone is critical, `warn` if any is warn,
+ * `offline` only if every zone is offline, and `ok` otherwise.
+ *
+ * @param zones - Full building zone array.
+ * @param wing  - Wing to filter.
+ * @param floor - Floor to filter.
+ */
 function wingFloorStatus(zones: Zone[], wing: Wing, floor: Floor): ZoneStatus {
   const wz = zones.filter(z => z.wing === wing && z.floor === floor);
   if (wz.some(z => z.status === 'critical')) return 'critical';
@@ -189,13 +263,31 @@ function wingFloorStatus(zones: Zone[], wing: Wing, floor: Floor): ZoneStatus {
   return 'ok';
 }
 
+/**
+ * Computes the average temperature across all zones in a wing + floor.
+ * Returns `0` if no zones match.
+ *
+ * @param zones - Full building zone array.
+ * @param wing  - Wing to filter.
+ * @param floor - Floor to filter.
+ * @returns Average temperature in °C.
+ */
 function wingFloorAvgTemp(zones: Zone[], wing: Wing, floor: Floor): number {
   const wz = zones.filter(z => z.wing === wing && z.floor === floor);
   if (!wz.length) return 0;
   return wz.reduce((s, z) => s + z.sensors.temperature, 0) / wz.length;
 }
 
-// ── Main component ──
+/**
+ * Renders an interactive isometric 3D overview of the T-shaped building.
+ * Each floor (Basement, Floor 1, Floor 2) is drawn as a stacked slab with
+ * status-colored top faces, vertical wall faces, window rows, and status
+ * indicator pillars. Hovering a slab highlights it; clicking calls
+ * `onSelectFloor` to drill into that floor's 2D plan.
+ *
+ * @param zones         - All building zones used to derive per-floor status and temperature.
+ * @param onSelectFloor - Callback invoked with the clicked floor level.
+ */
 export function BuildingElevation({ zones, onSelectFloor }: BuildingElevationProps) {
   const [hoveredFloor, setHoveredFloor] = useState<Floor | null>(null);
 

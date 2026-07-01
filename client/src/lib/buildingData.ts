@@ -56,10 +56,25 @@ export type Wing = 'east' | 'west' | 'north';
 export type Floor = 0 | 1 | 2; // 0 = Basement, 1 = Ground Floor, 2 = Upper Floor
 
 // ---- Sensor simulation helpers ----
+/**
+ * Returns a random float in [min, max] rounded to `decimals` decimal places.
+ *
+ * @param min - Lower bound (inclusive).
+ * @param max - Upper bound (inclusive).
+ * @param decimals - Number of decimal places to round to. Defaults to 1.
+ * @returns Random number within the specified range.
+ */
 function rand(min: number, max: number, decimals = 1): number {
   return parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
 }
 
+/**
+ * Generates 20 simulated {@link SensorHistory} entries spaced 3 minutes apart, ending at now.
+ *
+ * @param baseTemp - Centre temperature in °C around which readings are randomly varied (±1°C).
+ * @param baseEnergy - Centre energy in kW around which readings are randomly varied (±1.5 kW).
+ * @returns Array of 20 history entries in ascending timestamp order.
+ */
 function generateHistory(baseTemp: number, baseEnergy: number): SensorHistory[] {
   const now = Date.now();
   return Array.from({ length: 20 }, (_, i) => ({
@@ -71,6 +86,17 @@ function generateHistory(baseTemp: number, baseEnergy: number): SensorHistory[] 
   }));
 }
 
+/**
+ * Derives a {@link ZoneStatus} from current sensor readings.
+ *
+ * - `'critical'` — temperature > 30°C, CO₂ > 1200 ppm, or AQI > 150.
+ * - `'warn'`     — temperature > 26°C, CO₂ > 900 ppm, humidity > 70%, or AQI > 100.
+ * - `'offline'`  — no equipment online.
+ * - `'ok'`       — all readings within normal bounds.
+ *
+ * @param sensors - Current sensor snapshot for the zone.
+ * @returns Derived status string.
+ */
 function computeStatus(sensors: SensorData): ZoneStatus {
   if (sensors.temperature > 30 || sensors.co2 > 1200 || sensors.airQuality > 150) return 'critical';
   if (sensors.temperature > 26 || sensors.co2 > 900 || sensors.humidity > 70 || sensors.airQuality > 100) return 'warn';
@@ -78,6 +104,12 @@ function computeStatus(sensors: SensorData): ZoneStatus {
   return 'ok';
 }
 
+/**
+ * Generates a randomised {@link SensorData} object with all fields set to plausible defaults.
+ *
+ * @param overrides - Partial sensor fields to merge over the generated defaults.
+ * @returns A fully-populated SensorData object.
+ */
 function makeSensors(overrides: Partial<SensorData> = {}): SensorData {
   const base: SensorData = {
     temperature: rand(20, 24),
@@ -140,6 +172,16 @@ const zoneDefinitions: Omit<Zone, 'status' | 'sensors' | 'history' | 'alerts'>[]
 ];
 
 // ---- Build initial zones with simulated data ----
+/**
+ * Constructs the initial {@link Zone} array from static zone definitions.
+ *
+ * Each zone receives simulated sensor data, a computed status, and a sensor history.
+ * Energy and temperature baselines are adjusted per zone type (server rooms run hotter;
+ * machining bays draw more power; the welding lab gets elevated AQI). Alert entries are
+ * seeded for any zone that starts in a warn or critical state.
+ *
+ * @returns Array of fully-populated Zone objects ready to seed the singleton store.
+ */
 function buildZones(): Zone[] {
   return zoneDefinitions.map(def => {
     // Inject variety: basement machining labs run high energy; welding lab has elevated AQI/fumes
@@ -202,10 +244,18 @@ let zones: Zone[] = buildZones();
 let listeners: (() => void)[] = [];
 let simTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Calls every registered subscriber callback, signalling that zone data has changed.
+ */
 function notifyListeners() {
   listeners.forEach(fn => fn());
 }
 
+/**
+ * Advances each non-offline zone by applying a small random drift to all sensor fields,
+ * appends a new history point (keeping the last 20 entries), recomputes the zone status,
+ * and then calls {@link notifyListeners} to push the update to all subscribers.
+ */
 function tickZones() {
   zones = zones.map(zone => {
     if (zone.status === 'offline') return zone;
@@ -242,6 +292,14 @@ function tickZones() {
   notifyListeners();
 }
 
+/**
+ * Subscribes to live zone updates. Starts the 3-second simulation timer when the first
+ * subscriber registers, and stops it when the last subscriber unsubscribes.
+ *
+ * @param fn - Callback invoked on every simulation tick.
+ * @returns An unsubscribe function; call it to remove the listener and stop the timer
+ *          when no other subscribers remain.
+ */
 export function subscribeToZones(fn: () => void): () => void {
   listeners.push(fn);
   if (listeners.length === 1) {
@@ -256,23 +314,56 @@ export function subscribeToZones(fn: () => void): () => void {
   };
 }
 
+/**
+ * Returns the current snapshot of all zones.
+ *
+ * @returns The live zone array (not a copy; do not mutate).
+ */
 export function getZones(): Zone[] {
   return zones;
 }
 
 // ---- Utility functions ----
+/**
+ * Filters zones by wing and floor.
+ *
+ * @param wing - Target wing identifier (`'east'`, `'west'`, or `'north'`).
+ * @param floor - Target floor (`0` = Basement, `1` = Ground Floor, `2` = Upper Floor).
+ * @returns Zones matching both criteria.
+ */
 export function getZonesByWingAndFloor(wing: Wing, floor: Floor): Zone[] {
   return zones.filter(z => z.wing === wing && z.floor === floor);
 }
 
+/**
+ * Finds a zone by its string ID.
+ *
+ * @param id - Zone identifier (e.g. `'W1-ROB'`).
+ * @returns The matching Zone, or `undefined` if not found.
+ */
 export function getZoneById(id: string): Zone | undefined {
   return zones.find(z => z.id === id);
 }
 
+/**
+ * Collects all alerts from every zone and returns them sorted newest-first by timestamp.
+ *
+ * @returns Flat array of all active {@link Alert} objects across the building.
+ */
 export function getAllAlerts(): Alert[] {
   return zones.flatMap(z => z.alerts).sort((a, b) => b.timestamp - a.timestamp);
 }
 
+/**
+ * Computes aggregate building statistics from the current zone snapshot.
+ *
+ * @returns An object containing:
+ * - `total` — total zone count.
+ * - `ok / warn / critical / offline` — zone counts per status.
+ * - `totalEnergy` — sum of all zone energy readings in kW.
+ * - `totalOccupancy` — sum of all zone occupancy counts.
+ * - `avgTemp` — mean temperature across all zones in °C.
+ */
 export function getBuildingSummary() {
   const total = zones.length;
   const ok = zones.filter(z => z.status === 'ok').length;

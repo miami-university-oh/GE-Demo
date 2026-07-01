@@ -16,6 +16,18 @@ interface ThemeProviderProps {
   switchable?: boolean;
 }
 
+/**
+ * Applies the active theme class to `document.documentElement` and provides theme
+ * context to the subtree.
+ *
+ * When `switchable` is `true`, the selected theme is persisted to `localStorage` and
+ * a `toggleTheme` function is exposed via context. When `switchable` is `false` (default),
+ * the theme is locked to `defaultTheme` and `toggleTheme` is `undefined`.
+ *
+ * @param children - React subtree that consumes theme context.
+ * @param defaultTheme - Initial theme to apply. Defaults to `'light'`.
+ * @param switchable - Whether the user can toggle between themes. Defaults to `false`.
+ */
 export function ThemeProvider({
   children,
   defaultTheme = "light",
@@ -55,6 +67,13 @@ export function ThemeProvider({
   );
 }
 
+/**
+ * Returns the current theme context: `{ theme, toggleTheme, switchable }`.
+ *
+ * `toggleTheme` is `undefined` when the provider was created with `switchable={false}`.
+ *
+ * @throws If called outside of a {@link ThemeProvider}.
+ */
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (!context) {

@@ -44,6 +44,17 @@ const IW = 3;  // inner wall thickness
 const OX = 20;
 const OY = 20;
 
+/**
+ * Returns the room layout definitions for a given floor level.
+ *
+ * Each `RoomDef` carries the room's zone ID, grid coordinates (x/y/w/h) in
+ * the SVG viewBox, label text, short code, zone type, and optional door
+ * placement metadata. Separate layouts are defined for the basement (floor 0)
+ * and the two above-ground floors (floors 1 and 2) of the T-shaped building.
+ *
+ * @param floor - Floor level: 0 = Basement, 1 = Floor 1, 2 = Floor 2.
+ * @returns Array of RoomDef objects for all rooms on that floor.
+ */
 function makeRooms(floor: Floor): RoomDef[] {
   // ── BASEMENT LAYOUT ──
   if (floor === 0) {
@@ -226,7 +237,14 @@ function makeRooms(floor: Floor): RoomDef[] {
   ];
 }
 
-// T-shape outer wall path (single floor)
+/**
+ * Builds an SVG path string tracing the outer perimeter of the T-shaped
+ * building footprint on a single floor. The path is defined by six x
+ * columns and three y rows derived from the global `OX`/`OY` offsets,
+ * producing a closed polygon suitable for the `<path>` `d` attribute.
+ *
+ * @returns SVG path `d` string for the T-shape outline.
+ */
 function tShapePath(): string {
   const x0 = OX, x1 = OX + 168, x2 = OX + 198, x3 = OX + 308, x4 = OX + 318, x5 = OX + 510;
   const y0 = OY, y1 = OY + 300, y2 = OY + 560;
@@ -265,6 +283,17 @@ const WING_BAND_COLOR: Record<Wing, string> = {
   west:  'rgba(59,130,246,0.10)',
 };
 
+/**
+ * Renders a door opening indicator on the correct wall of a room.
+ * Draws a short line segment representing the door width and a dashed
+ * quarter-circle arc showing the swing direction. The `side` and `pos`
+ * fields in `room.door` control which wall the door appears on and its
+ * fractional position along that wall (0–1).
+ *
+ * @param room  - Room definition with a `door` descriptor.
+ * @param color - Stroke color for the door arc and line.
+ * @returns SVG `<g>` element, or `null` if the room has no door.
+ */
 function DoorArc({ room, color }: { room: RoomDef; color: string }) {
   if (!room.door) return null;
   const { side, pos } = room.door;
@@ -304,6 +333,16 @@ function DoorArc({ room, color }: { room: RoomDef; color: string }) {
   return null;
 }
 
+/**
+ * Renders a dashed stairwell rectangle with evenly spaced horizontal
+ * tread lines and a "STAIR" label. Used on both above-ground floors to
+ * indicate vertical circulation cores.
+ *
+ * @param x - Left edge of the stairwell in SVG coordinates.
+ * @param y - Top edge of the stairwell in SVG coordinates.
+ * @param w - Width of the stairwell.
+ * @param h - Height of the stairwell.
+ */
 function Stairwell({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
   const steps = 6;
   return <g>
@@ -316,6 +355,15 @@ function Stairwell({ x, y, w, h }: { x: number; y: number; w: number; h: number 
   </g>;
 }
 
+/**
+ * Renders a lift/elevator shaft as a rectangle with diagonal cross lines
+ * and a "LIFT" label — a conventional architectural floor-plan symbol.
+ *
+ * @param x - Left edge in SVG coordinates.
+ * @param y - Top edge in SVG coordinates.
+ * @param w - Width of the shaft.
+ * @param h - Height of the shaft.
+ */
 function Elevator({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
   return <g>
     <rect x={x} y={y} width={w} height={h} fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.35)" strokeWidth="1.5" />
@@ -325,6 +373,14 @@ function Elevator({ x, y, w, h }: { x: number; y: number; w: number; h: number }
   </g>;
 }
 
+/**
+ * Renders a small compass rose SVG at position (x, y). The north needle
+ * is bright blue; the other three directions are dimmer. Includes an "N"
+ * label above the north needle.
+ *
+ * @param x - Center x in SVG coordinates.
+ * @param y - Center y in SVG coordinates.
+ */
 function CompassRose({ x, y }: { x: number; y: number }) {
   return <g transform={`translate(${x},${y})`}>
     <circle cx="0" cy="0" r="16" fill="rgba(13,31,60,0.80)" stroke="rgba(96,165,250,0.30)" strokeWidth="1" />
@@ -336,6 +392,19 @@ function CompassRose({ x, y }: { x: number; y: number }) {
   </g>;
 }
 
+/**
+ * Renders an architectural 2D floor plan for a single building floor as
+ * an inline SVG. Each room rectangle is color-coded by its zone's live
+ * status, with a selected highlight and a hover highlight. Clicking a
+ * room calls `onSelectZone` with the zone ID. Door arcs, stairwells,
+ * elevators, and a compass rose are drawn as architectural annotations.
+ * A tooltip shows zone name and current temperature on hover.
+ *
+ * @param zones          - All building zones (filtered to the active floor internally).
+ * @param selectedZoneId - ID of the currently selected zone, or null.
+ * @param onSelectZone   - Callback invoked with the zone ID when a room is clicked.
+ * @param floor          - Floor level to render: 0 = Basement, 1 = Floor 1, 2 = Floor 2.
+ */
 export function FloorPlan({ zones, selectedZoneId, onSelectZone, floor }: FloorPlanProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; room: RoomDef } | null>(null);

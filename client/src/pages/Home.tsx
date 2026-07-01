@@ -24,10 +24,25 @@ import { Maximize2, Minimize2 } from 'lucide-react';
 // Zone IDs that trigger the Makino deep-dive view
 const MAKINO_ZONE_ID = 'B0-MAK';
 
+/**
+ * Returns true if `id` matches the Makino Lab zone identifier,
+ * which triggers the deep-dive MakinoLab view instead of the ZonePanel.
+ *
+ * @param id - Selected zone ID, or null.
+ */
 function isMakinoZone(id: string | null): boolean {
   return id === MAKINO_ZONE_ID;
 }
 
+/**
+ * Main IIoT dashboard page.
+ *
+ * Composes the full SCADA-style layout: a fixed header with global KPIs,
+ * a wing/zone navigation sidebar, a central FloorPlanViewer (elevation ↔ floor plan),
+ * a slide-in ZonePanel for the selected zone, a collapsible wing overview, and a
+ * scrolling alert ticker. Clicking the Makino zone (B0-MAK) replaces the layout with
+ * the full-screen MakinoLab deep-dive view. The header clock ticks every second.
+ */
 export default function Home() {
   const { zones, summary, alerts } = useBuildingData();
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);

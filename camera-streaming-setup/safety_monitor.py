@@ -16,15 +16,15 @@ Usage:
     on UDP port 9876.
 """
 
-import time
-import math
-import threading
-import logging
-import socket
 import json
-from enum import Enum
+import logging
+import math
+import socket
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List
+from enum import Enum
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pyrealsense2 as rs
@@ -43,19 +43,19 @@ log = logging.getLogger("safety")
 @dataclass(frozen=True)
 class SafetyConfig:
     # ── Zone radii (meters, floor plane) ──
-    danger_radius: float  = 0.8     # inside  → hard pause  (RED)
-    warning_radius: float = 1.8     # inside  → slow down   (YELLOW)
-    clear_radius: float   = 2.2     # outside → full speed   (GREEN)
+    danger_radius: float = 0.8  # inside  → hard pause  (RED)
+    warning_radius: float = 1.8  # inside  → slow down   (YELLOW)
+    clear_radius: float = 2.2  # outside → full speed   (GREEN)
     #   gap between warning & clear = hysteresis band
 
     # ── Speed scaling ──
     max_speed_scale: float = 1.0
-    min_speed_scale: float = 0.10   # slowest crawl in YELLOW band
+    min_speed_scale: float = 0.10  # slowest crawl in YELLOW band
 
     # ── Timing ──
-    control_hz: float      = 30.0   # safety-loop rate
+    control_hz: float = 30.0  # safety-loop rate
     rescan_pause_ms: float = 500.0  # clear-confirmation window
-    stale_timeout_ms: float = 200.0 # detection older than this → unsafe
+    stale_timeout_ms: float = 200.0  # detection older than this → unsafe
 
     # ── Robot base position in the floor frame (meters) ──
     #    Measure where the UR5e base sits relative to your
@@ -63,42 +63,51 @@ class SafetyConfig:
     robot_base_xy: Tuple[float, float] = (0.0, 0.0)
 
     # ── Network ──
-    robot_ip: str   = "192.168.1.15"   # ← your UR5e IP
-    sim_host: str   = "127.0.0.1"      # Isaac Sim machine
-    sim_port: int   = 9876
+    robot_ip: str = "192.168.1.15"  # ← your UR5e IP
+    sim_host: str = "127.0.0.1"  # Isaac Sim machine
+    sim_port: int = 9876
 
     # ── YOLO model ──
     # Point this to YOUR trained weights.
     #   • "yolov8n.pt" = pretrained nano (person = class 0, good for testing)
     #   • "best.pt"    = your custom-trained weights
-    yolo_weights: str    = "yolov8n.pt"
-    yolo_conf: float     = 0.5          # confidence threshold
-    human_class_id: int  = 0            # COCO person=0; change if custom model differs
+    yolo_weights: str = "yolov8n.pt"
+    yolo_conf: float = 0.5  # confidence threshold
+    human_class_id: int = 0  # COCO person=0; change if custom model differs
 
     # ── Camera ──
-    camera_width: int  = 640
+    camera_width: int = 640
     camera_height: int = 480
-    camera_fps: int    = 30
+    camera_fps: int = 30
 
 
 # ═══════════════════════════════════════════════════════════════════════════ #
 #  DATA TYPES
 # ═══════════════════════════════════════════════════════════════════════════ #
 class SafetyState(Enum):
-    GREEN  = "GREEN"
+    GREEN = "GREEN"
     YELLOW = "YELLOW"
-    RED    = "RED"
+    RED = "RED"
     RESCAN = "RESCAN"
 
 
 @dataclass
 class Detection:
     human_present: bool
-    human_xy: Optional[Tuple[float, float]]   # floor-frame meters
+    human_xy: Optional[Tuple[float, float]]  # floor-frame meters
     confidence: float
     timestamp: float = field(default_factory=time.monotonic)
 
     def age_ms(self) -> float:
+        """Return how many milliseconds have elapsed since this detection was created.
+
+        Uses ``time.monotonic`` to avoid wall-clock skew. The safety
+        controller compares this value against ``stale_timeout_ms`` to
+        determine whether the detection is still trustworthy.
+
+        Returns:
+            float: Age of the detection in milliseconds.
+        """
         return (time.monotonic() - self.timestamp) * 1000.0
 
 
@@ -112,6 +121,20 @@ class PerceptionThread(threading.Thread):
     """
 
     def __init__(self, cfg: SafetyConfig):
+        """Initialise perception thread parameters without starting the pipeline.
+
+        Sets up the lock and fail-safe initial detection (human present,
+        no position — conservative until the first real frame arrives),
+        the stop event, and the camera-to-floor extrinsic transform
+        ``T_cam_floor``. The transform defaults to the 4x4 identity
+        matrix; replace it with the calibrated matrix produced by
+        ``calibrate_l515.py``.
+
+        Args:
+            cfg (SafetyConfig): Frozen configuration object containing
+                camera resolution, YOLO model path, confidence threshold,
+                human class ID, and the robot base position.
+        """
         super().__init__(daemon=True, name="perception")
         self.cfg = cfg
         self._lock = threading.Lock()
@@ -145,22 +168,59 @@ class PerceptionThread(threading.Thread):
         # ])
 
     def latest(self) -> Detection:
+        """Return the most recent ``Detection`` snapshot, thread-safely.
+
+        Acquires ``_lock`` before reading ``_latest`` so callers on
+        other threads always get a consistent object.
+
+        Returns:
+            Detection: The last detection produced by ``_infer``, or the
+            fail-safe detection if the thread has not yet produced one.
+        """
         with self._lock:
             return self._latest
 
     def stop(self):
+        """Signal the perception thread to exit after the current frame.
+
+        Clears the ``_running`` event; the ``run`` loop checks
+        ``_running.is_set()`` on every iteration and will exit cleanly,
+        stopping the RealSense pipeline in its ``finally`` block.
+        """
         self._running.clear()
 
     def run(self):
+        """Main perception loop: start the pipeline and process frames until stopped.
+
+        Starts the RealSense pipeline with both color and depth streams,
+        creates an alignment object so depth pixels map to color pixels,
+        loads the YOLO model, then repeatedly calls ``_infer`` to
+        produce ``Detection`` objects. Each result is stored in
+        ``_latest`` under ``_lock``. On any per-frame exception the
+        fail-safe detection (human present, no position) is stored
+        instead and the loop continues. The pipeline is stopped in a
+        ``finally`` block to release the device regardless of how the
+        loop exits.
+        """
         cfg = self.cfg
 
         # ── RealSense pipeline ──
         pipeline = rs.pipeline()
         rs_cfg = rs.config()
-        rs_cfg.enable_stream(rs.stream.color, cfg.camera_width, cfg.camera_height,
-                             rs.format.bgr8, cfg.camera_fps)
-        rs_cfg.enable_stream(rs.stream.depth, cfg.camera_width, cfg.camera_height,
-                             rs.format.z16, cfg.camera_fps)
+        rs_cfg.enable_stream(
+            rs.stream.color,
+            cfg.camera_width,
+            cfg.camera_height,
+            rs.format.bgr8,
+            cfg.camera_fps,
+        )
+        rs_cfg.enable_stream(
+            rs.stream.depth,
+            cfg.camera_width,
+            cfg.camera_height,
+            rs.format.z16,
+            cfg.camera_fps,
+        )
         profile = pipeline.start(rs_cfg)
 
         # Align depth to color so pixel coords match.
@@ -172,8 +232,12 @@ class PerceptionThread(threading.Thread):
 
         # ── YOLO model ──
         model = YOLO(cfg.yolo_weights)
-        log.info("Perception started  (model=%s, class=%d, conf=%.2f)",
-                 cfg.yolo_weights, cfg.human_class_id, cfg.yolo_conf)
+        log.info(
+            "Perception started  (model=%s, class=%d, conf=%.2f)",
+            cfg.yolo_weights,
+            cfg.human_class_id,
+            cfg.yolo_conf,
+        )
 
         try:
             while self._running.is_set():
@@ -189,12 +253,32 @@ class PerceptionThread(threading.Thread):
             log.info("RealSense pipeline stopped")
 
     def _infer(self, pipeline, align, model) -> Detection:
-        """
-        One perception cycle:
-          1. Grab aligned color + depth.
-          2. Run YOLO on the color frame.
-          3. For each human detection, deproject bbox center → floor coords.
-          4. Return the NEAREST human to the robot base.
+        """Run one inference cycle and return a ``Detection`` for the nearest human.
+
+        Steps:
+
+        1. Block on the RealSense pipeline for an aligned color + depth
+           frame pair. Returns a fail-safe detection immediately if
+           either frame is missing.
+        2. Run YOLO on the color image, filtering to ``human_class_id``
+           only.
+        3. For each detection, read depth at the bounding-box centre
+           pixel (skipping if depth is outside 0.1–5.0 m), then call
+           ``rs.rs2_deproject_pixel_to_point`` and transform the result
+           with ``T_cam_floor`` to get a floor-frame (x, y) position.
+        4. Select the human closest to ``robot_base_xy`` by Euclidean
+           distance and return it as a ``Detection``. Returns an empty
+           ``Detection`` (``human_present=False``) when no humans pass
+           the depth validity check.
+
+        Args:
+            pipeline (rs.pipeline): Running RealSense pipeline.
+            align (rs.align): Alignment processor (depth → color).
+            model (YOLO): Loaded Ultralytics YOLO model.
+
+        Returns:
+            Detection: Nearest detected human in floor coords, or an
+            empty/fail-safe detection when no valid human is found.
         """
         cfg = self.cfg
 
@@ -273,6 +357,19 @@ class RobotInterface:
     """
 
     def __init__(self, cfg: SafetyConfig):
+        """Initialise the robot interface without connecting to the robot.
+
+        Sets up internal speed-scale and pause-state tracking, a
+        threading lock for safe concurrent access, and a UDP socket
+        bound to the Isaac Sim address. The RTDE handle is left as
+        ``None`` (commented-out import) until the real robot is ready;
+        all robot commands are silently no-ops when ``self.rtde`` is
+        ``None``.
+
+        Args:
+            cfg (SafetyConfig): Frozen configuration containing
+                ``robot_ip``, ``sim_host``, and ``sim_port``.
+        """
         self.cfg = cfg
         self._scale = 1.0
         self._paused = False
@@ -288,10 +385,24 @@ class RobotInterface:
         self._sim_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sim_addr = (cfg.sim_host, cfg.sim_port)
 
-        log.info("RobotInterface ready  (robot=%s, sim=%s:%d)",
-                 cfg.robot_ip, cfg.sim_host, cfg.sim_port)
+        log.info(
+            "RobotInterface ready  (robot=%s, sim=%s:%d)",
+            cfg.robot_ip,
+            cfg.sim_host,
+            cfg.sim_port,
+        )
 
     def set_speed_scale(self, scale: float):
+        """Clamp ``scale`` to [0, 1] and apply it to the robot's speed slider.
+
+        The update is skipped when the new value is within 0.001 of the
+        current scale to avoid flooding the RTDE connection with
+        redundant commands. The change is logged at DEBUG level.
+
+        Args:
+            scale (float): Desired speed fraction in [0.0, 1.0];
+                values outside this range are clipped.
+        """
         scale = float(np.clip(scale, 0.0, 1.0))
         with self._lock:
             if abs(scale - self._scale) < 1e-3:
@@ -303,6 +414,13 @@ class RobotInterface:
         log.debug("speed → %.2f", scale)
 
     def pause(self):
+        """Send a protective stop to the robot and mark it as paused.
+
+        Idempotent: if the robot is already paused the call returns
+        immediately without issuing another stop command. Calls
+        ``rtde.stopL(2.0)`` (deceleration 2 m/s²) when RTDE is active.
+        Logs a WARNING on each transition to paused.
+        """
         with self._lock:
             if self._paused:
                 return
@@ -313,6 +431,13 @@ class RobotInterface:
         log.warning("ROBOT PAUSED")
 
     def resume(self):
+        """Clear the paused flag and log that the robot has resumed.
+
+        Idempotent: returns immediately if the robot is not currently
+        paused. Does not send any RTDE command; the running UR program
+        must be unblocked separately (e.g. via a digital output or
+        ``reuploadScript``) if hard-stop was used.
+        """
         with self._lock:
             if not self._paused:
                 return
@@ -324,7 +449,19 @@ class RobotInterface:
         log.info("Robot RESUMED")
 
     def send_state_to_sim(self, state: str, distance: float):
-        """Fire-and-forget UDP to Isaac Sim for zone visualization."""
+        """Send the current safety state and human distance to Isaac Sim over UDP.
+
+        Serialises ``{"state": state, "distance": distance}`` as JSON
+        and sends it as a single UDP datagram to ``(sim_host, sim_port)``.
+        Errors are silently swallowed — the call is non-critical and
+        must never block or raise in the safety loop.
+
+        Args:
+            state (str): Safety state name (e.g. ``"GREEN"``, ``"RED"``).
+            distance (float): Euclidean distance (m) from the robot base
+                to the nearest detected human; ``math.inf`` when no
+                human is detected.
+        """
         try:
             msg = json.dumps({"state": state, "distance": round(distance, 3)})
             self._sim_sock.sendto(msg.encode(), self._sim_addr)
@@ -345,9 +482,23 @@ class SafetyController(threading.Thread):
         RESCAN ─(human re-enters danger)─────→ RED     (instant)
     """
 
-    def __init__(self, cfg: SafetyConfig,
-                 perception: PerceptionThread,
-                 robot: RobotInterface):
+    def __init__(
+        self, cfg: SafetyConfig, perception: PerceptionThread, robot: RobotInterface
+    ):
+        """Initialise the safety controller state machine.
+
+        Sets the initial state to ``GREEN``, creates the stop event,
+        and resets the rescan timer. Does not start the thread; call
+        ``start()`` explicitly.
+
+        Args:
+            cfg (SafetyConfig): Frozen configuration with zone radii,
+                speed limits, timing parameters, and control rate.
+            perception (PerceptionThread): Running perception thread
+                whose ``latest()`` method is polled each control cycle.
+            robot (RobotInterface): Robot interface used to apply speed
+                changes and pause/resume commands.
+        """
         super().__init__(daemon=True, name="safety")
         self.cfg = cfg
         self.perception = perception
@@ -358,10 +509,28 @@ class SafetyController(threading.Thread):
         self._rescan_started: Optional[float] = None
 
     def stop(self):
+        """Signal the safety controller thread to exit after its current cycle.
+
+        Clears the ``_running`` event; the ``run`` loop checks
+        ``_running.is_set()`` at the top of every iteration.
+        """
         self._running.clear()
 
     # ── helpers ──
     def _distance(self, det: Detection) -> float:
+        """Return the Euclidean distance (m) from the robot base to the nearest detected human.
+
+        Returns ``math.inf`` when ``det.human_present`` is ``False`` or
+        ``det.human_xy`` is ``None``, ensuring the state machine treats
+        "no detection" as safely far away rather than dangerously close.
+
+        Args:
+            det (Detection): Detection snapshot from the perception thread.
+
+        Returns:
+            float: Distance in metres, or ``math.inf`` if no human is
+            present.
+        """
         if not det.human_present or det.human_xy is None:
             return math.inf
         bx, by = self.cfg.robot_base_xy
@@ -369,6 +538,20 @@ class SafetyController(threading.Thread):
         return math.hypot(hx - bx, hy - by)
 
     def _speed_for_distance(self, d: float) -> float:
+        """Linearly interpolate robot speed between min and max across the warning band.
+
+        Returns ``max_speed_scale`` when ``d`` is at or beyond
+        ``warning_radius`` and 0.0 when ``d`` is at or within
+        ``danger_radius``. Between those boundaries the speed is
+        linearly scaled so the robot slows smoothly as the human
+        approaches.
+
+        Args:
+            d (float): Distance (m) from robot base to the nearest human.
+
+        Returns:
+            float: Speed scale in [0.0, ``max_speed_scale``].
+        """
         c = self.cfg
         if d >= c.warning_radius:
             return c.max_speed_scale
@@ -378,6 +561,17 @@ class SafetyController(threading.Thread):
         return c.min_speed_scale + t * (c.max_speed_scale - c.min_speed_scale)
 
     def _set_state(self, new_state: SafetyState, d: float):
+        """Transition to ``new_state`` if it differs from the current state.
+
+        Logs the transition (old → new, distance) at INFO level and
+        notifies Isaac Sim via ``robot.send_state_to_sim``. If
+        ``new_state`` is already the current state the call is a no-op.
+
+        Args:
+            new_state (SafetyState): The desired next state.
+            d (float): Current human distance (m), included in the log
+                message and the UDP notification payload.
+        """
         if new_state != self.state:
             log.info("STATE  %s → %s  (d=%.2f m)", self.state.value, new_state.value, d)
             self.state = new_state
@@ -385,6 +579,14 @@ class SafetyController(threading.Thread):
 
     # ── main loop ──
     def run(self):
+        """Main safety loop: poll perception at ``control_hz`` and drive the state machine.
+
+        Each iteration reads the latest ``Detection``, marks it as stale
+        if its age exceeds ``stale_timeout_ms`` (and treats stale data as
+        a human at distance 0 for fail-safe behaviour), then delegates to
+        ``_step``. The loop sleeps for the remainder of the control period
+        to maintain the target rate. Exits when ``_running`` is cleared.
+        """
         period = 1.0 / self.cfg.control_hz
         log.info("Safety controller started  (%.0f Hz)", self.cfg.control_hz)
 
@@ -402,6 +604,31 @@ class SafetyController(threading.Thread):
             time.sleep(max(0.0, period - elapsed))
 
     def _step(self, d: float, stale: bool):
+        """Execute one state-machine step given current distance and staleness.
+
+        Transition rules:
+
+        - **RED**: entered immediately when ``stale`` is ``True`` or
+          ``d <= danger_radius``; robot is paused.
+        - **RESCAN**: entered when the robot was RED and ``d`` has risen
+          above ``danger_radius``; the robot remains paused for
+          ``rescan_pause_ms`` to confirm the human has truly left. If
+          the human re-enters the danger zone during this window, the
+          state reverts to RED instantly.
+        - **YELLOW**: active when ``d`` is in the warning band
+          (``danger_radius < d < warning_radius``); robot runs at a
+          linearly interpolated reduced speed.
+        - **GREEN**: active when ``d >= clear_radius`` or when not
+          currently in YELLOW; robot runs at full speed. A hysteresis
+          band between ``warning_radius`` and ``clear_radius`` keeps
+          the state in YELLOW until ``d`` exceeds ``clear_radius``.
+
+        Args:
+            d (float): Distance (m) from robot base to nearest human;
+                0.0 when stale.
+            stale (bool): ``True`` if the latest detection is older
+                than ``stale_timeout_ms``.
+        """
         c = self.cfg
 
         # ── RED: danger zone or stale data ──
@@ -419,7 +646,7 @@ class SafetyController(threading.Thread):
 
             elapsed_ms = (time.monotonic() - self._rescan_started) * 1000.0
             if elapsed_ms < c.rescan_pause_ms:
-                self.robot.pause()      # stay stopped while confirming
+                self.robot.pause()  # stay stopped while confirming
                 return
             # Full 500 ms passed with no re-entry → resume.
             self._rescan_started = None
@@ -447,20 +674,38 @@ class SafetyController(threading.Thread):
 #  ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════ #
 def main():
+    """Entry point: wire up components, start threads, and block until interrupted.
+
+    Instantiates ``SafetyConfig``, ``PerceptionThread``, ``RobotInterface``,
+    and ``SafetyController``; logs the active configuration; then starts
+    the perception and controller threads. The main thread sleeps in a
+    loop, keeping the process alive until ``KeyboardInterrupt`` (Ctrl+C).
+
+    On interrupt, calls ``controller.stop()``, ``perception.stop()``, and
+    ``robot.pause()`` (safe state) before the process exits.
+    """
     cfg = SafetyConfig()
 
     log.info("═" * 60)
     log.info("  UR5e Safety Monitor")
     log.info("  Robot IP   : %s", cfg.robot_ip)
-    log.info("  YOLO model : %s  (class %d, conf ≥ %.2f)",
-             cfg.yolo_weights, cfg.human_class_id, cfg.yolo_conf)
-    log.info("  Zones      : danger=%.1fm  warning=%.1fm  clear=%.1fm",
-             cfg.danger_radius, cfg.warning_radius, cfg.clear_radius)
+    log.info(
+        "  YOLO model : %s  (class %d, conf ≥ %.2f)",
+        cfg.yolo_weights,
+        cfg.human_class_id,
+        cfg.yolo_conf,
+    )
+    log.info(
+        "  Zones      : danger=%.1fm  warning=%.1fm  clear=%.1fm",
+        cfg.danger_radius,
+        cfg.warning_radius,
+        cfg.clear_radius,
+    )
     log.info("  Sim target : %s:%d", cfg.sim_host, cfg.sim_port)
     log.info("═" * 60)
 
     perception = PerceptionThread(cfg)
-    robot      = RobotInterface(cfg)
+    robot = RobotInterface(cfg)
     controller = SafetyController(cfg, perception, robot)
 
     perception.start()

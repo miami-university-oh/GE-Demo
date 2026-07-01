@@ -94,6 +94,23 @@ def _capture_viewport_loop():
 
 class MJPEGHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        """
+        Handle GET requests for the viewport stream server.
+
+        Routes:
+            ``/`` or ``/stream`` — Returns a minimal HTML page that embeds
+            the MJPEG feed in an ``<img>`` tag.
+
+            ``/feed`` — Streams MJPEG frames at ``CAPTURE_FPS`` using
+            ``multipart/x-mixed-replace``.  Stops on ``BrokenPipeError``
+            or ``ConnectionResetError`` (client disconnect).
+
+            ``/snapshot`` — Returns the most recent captured JPEG as a
+            single ``image/jpeg`` response; responds with 503 if no frame
+            is available yet.
+
+            Anything else — 404 Not Found.
+        """
         if self.path == "/" or self.path == "/stream":
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
@@ -143,11 +160,16 @@ img{max-width:100%;max-height:100%}</style></head>
             self.send_response(404)
             self.end_headers()
 
-    def log_message(self, format, *args):
-        pass  # suppress logs
+    def log_message(self, format, *args):  # noqa: A002
+        """Suppress default access-log output to keep the Isaac Sim console clean."""
+        pass
 
 
 def _start_server():
+    """Bind an ``HTTPServer`` on all interfaces at ``STREAM_PORT`` and serve forever.
+
+    Intended to run in a daemon thread alongside ``_capture_viewport_loop``.
+    """
     server = HTTPServer(("0.0.0.0", STREAM_PORT), MJPEGHandler)
     carb.log_info(f"Viewport MJPEG stream at http://localhost:{STREAM_PORT}")
     server.serve_forever()

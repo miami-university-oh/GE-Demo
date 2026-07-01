@@ -81,6 +81,15 @@ ALERT_KP_IDS = {7, 8, 9, 10}   # elbows + wrists trigger alert
 # ── Find RealSense device ─────────────────────────────────────────────────────
 
 def _find_realsense_device():
+    """Query connected RealSense devices and return the first one found.
+
+    Prints the device name and serial number when a device is found.
+    Prints a diagnostic message with recovery hints when none are found.
+
+    Returns:
+        rs.device | None: The first connected RealSense device, or
+        ``None`` if no device is available.
+    """
     ctx = rs.context()
     devices = ctx.query_devices()
     if len(devices) == 0:
@@ -131,11 +140,33 @@ start_time        = time.time()
 # ── Draw helpers ────────────────────────────────────────────────────────────────
 
 def _in_zone(px: int, py: int) -> bool:
+    """Check whether a pixel lies inside the robot proximity alert zone.
+
+    The zone is a circle of radius ``ALERT_ZONE_PX`` pixels centred on
+    the frame centre ``(WIDTH // 2, HEIGHT // 2)``.
+
+    Args:
+        px (int): Pixel x coordinate.
+        py (int): Pixel y coordinate.
+
+    Returns:
+        bool: ``True`` if the pixel is within ``ALERT_ZONE_PX`` of the
+        frame centre, ``False`` otherwise.
+    """
     cx, cy = WIDTH // 2, HEIGHT // 2
     return ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5 < ALERT_ZONE_PX
 
 
 def _draw_zone(img):
+    """Draw the robot proximity zone circle and label on ``img`` in-place.
+
+    Renders a thin circle of radius ``ALERT_ZONE_PX`` in ``COLOR_ZONE``
+    centred on the frame, with a ``ROBOT ZONE`` text label just above
+    the top of the circle.
+
+    Args:
+        img (numpy.ndarray): BGR image to annotate (modified in-place).
+    """
     cx, cy = WIDTH // 2, HEIGHT // 2
     cv2.circle(img, (cx, cy), ALERT_ZONE_PX, COLOR_ZONE, 1, cv2.LINE_AA)
     cv2.putText(img, "ROBOT ZONE", (cx - 45, cy - ALERT_ZONE_PX - 6),
@@ -143,6 +174,22 @@ def _draw_zone(img):
 
 
 def _draw_person(img, x1, y1, x2, y2, conf, alert):
+    """Draw a person bounding box with a confidence label on ``img`` in-place.
+
+    The box and label background are drawn in ``COLOR_ALERT`` (red) when
+    the person has a limb inside the robot zone, or ``COLOR_PERSON``
+    (green) otherwise. The label reads ``!! PERSON <conf%>`` when
+    alerting, or ``PERSON <conf%>`` when clear.
+
+    Args:
+        img (numpy.ndarray): BGR image to annotate (modified in-place).
+        x1 (int): Left edge of the bounding box (pixels).
+        y1 (int): Top edge of the bounding box (pixels).
+        x2 (int): Right edge of the bounding box (pixels).
+        y2 (int): Bottom edge of the bounding box (pixels).
+        conf (float): Detection confidence in [0, 1].
+        alert (bool): ``True`` if any alert keypoints are in the zone.
+    """
     color = COLOR_ALERT if alert else COLOR_PERSON
     cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
     label = f"{'!! ' if alert else ''}PERSON {conf:.0%}"
@@ -154,7 +201,22 @@ def _draw_person(img, x1, y1, x2, y2, conf, alert):
 
 
 def _draw_keypoints(img, kps, alert_kps: set):
-    """kps: list of (x, y, conf) tuples; alert_kps: set of kp indices in zone."""
+    """Draw the COCO skeleton lines and joint circles on ``img`` in-place.
+
+    Iterates over ``SKELETON`` connection pairs; skips any segment where
+    either endpoint has confidence < 0.3. Segments that include an alert
+    joint are drawn in ``COLOR_ALERT`` (red); all others use
+    ``COLOR_SAFE`` (green). Each visible joint is rendered as a filled
+    circle with a white outline; arm joints (defined in ``KP_NAMES``)
+    are additionally labelled with a short name.
+
+    Args:
+        img (numpy.ndarray): BGR image to annotate (modified in-place).
+        kps (list[tuple[int, int, float]]): COCO 17-keypoint list, each
+            entry as ``(x, y, confidence)``.
+        alert_kps (set[int]): Set of keypoint indices whose pixel
+            positions fall inside the robot proximity zone.
+    "
     # Draw skeleton connections
     for a, b in SKELETON:
         if a >= len(kps) or b >= len(kps):
@@ -183,6 +245,23 @@ def _draw_keypoints(img, kps, alert_kps: set):
 
 
 def _draw_banner(img, num_people, alert_names):
+    """Draw the status banner bar at the top of ``img`` in-place.
+
+    Renders a full-width black bar with a single-line status message:
+
+    - ``!! ARM IN ROBOT ZONE — <joint names>`` in ``COLOR_ALERT`` when
+      any alert keypoint names are present.
+    - ``PERSON DETECTED (<n>) — arms tracked`` in ``COLOR_SAFE`` when
+      people are visible but no alert is active.
+    - ``NO PERSON IN FRAME`` in grey when the frame contains no
+      detected persons.
+
+    Args:
+        img (numpy.ndarray): BGR image to annotate (modified in-place).
+        num_people (int): Number of detected persons in the current frame.
+        alert_names (list[str]): Names of keypoints currently inside the
+            robot proximity zone (e.g. ``['L_WRIST', 'R_ELBOW']``).
+    """
     if alert_names:
         color = COLOR_ALERT
         msg   = f"!! ARM IN ROBOT ZONE — {', '.join(alert_names)}"
@@ -198,6 +277,16 @@ def _draw_banner(img, num_people, alert_names):
 
 
 def _draw_timestamp(img):
+    """Draw the camera/model/time overlay at the bottom-left of ``img`` in-place.
+
+    Renders a single anti-aliased text line in teal showing the camera
+    identifier (``CAM-01``), sensor model (``RealSense L515``), YOLO
+    model (``YOLOv8n-pose``), and the current wall-clock time
+    (``HH:MM:SS``).
+
+    Args:
+        img (numpy.ndarray): BGR image to annotate (modified in-place).
+    """
     ts = datetime.now().strftime("%H:%M:%S")
     cv2.putText(img, f"CAM-01 · RealSense L515 · YOLOv8n-pose · {ts}",
                 (12, HEIGHT - 12), cv2.FONT_HERSHEY_SIMPLEX,
@@ -207,6 +296,20 @@ def _draw_timestamp(img):
 # ── Capture + inference thread ───────────────────────────────────────────────────
 
 def capture_and_infer():
+    """Background thread: pull RealSense color frames and run YOLOv8n-pose inference.
+
+    Reads color frames from the RealSense pipeline every iteration.
+    Every ``INFER_EVERY`` frames, YOLOv8n-pose inference is run at
+    640 px input resolution. For each detected person the COCO 17
+    keypoints are extracted; wrists and elbows (``ALERT_KP_IDS``) are
+    tested against ``_in_zone`` and flagged if inside the proximity
+    circle. The annotated frame (bounding boxes, skeleton, zone ring,
+    banner, timestamp) is JPEG-encoded and written to ``latest_frame``
+    under ``frame_lock``. Detection metadata is written to
+    ``latest_detections`` under ``det_lock``. FPS is updated once per
+    second. Exceptions are caught, logged, and retried after 100 ms.
+    Stops when the global ``running`` flag is cleared.
+    """
     global latest_frame, latest_detections, running, frame_count, actual_fps
 
     fps_counter = 0
@@ -293,6 +396,17 @@ def capture_and_infer():
 # ── MJPEG ──────────────────────────────────────────────────────────────────────
 
 def _mjpeg():
+    """Generator that yields MJPEG boundary-delimited frames for Flask streaming.
+
+    Reads ``latest_frame`` under ``frame_lock`` on every iteration. If
+    no frame is available yet, sleeps 10 ms and retries. Each yielded
+    chunk is a fully-formed MJPEG part (boundary + ``Content-Type``
+    header + JPEG payload) suitable for a
+    ``multipart/x-mixed-replace`` HTTP response.
+
+    Yields:
+        bytes: A single MJPEG part ready for streaming.
+    """
     while True:
         with frame_lock:
             frame = latest_frame
@@ -308,6 +422,15 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
+    """Serve the HTML status dashboard at ``/``.
+
+    Displays detected person count, alert joint names (or ``CLEAR``),
+    current FPS, and server uptime. Embeds the live annotated stream via
+    an ``<img>`` tag pointing to ``/video_feed``.
+
+    Returns:
+        str: An HTML page as a plain string response.
+    """
     uptime = int(time.time() - start_time)
     with det_lock:
         dets  = latest_detections
@@ -327,16 +450,46 @@ def index():
 
 @app.route("/video_feed")
 def video_feed():
+    """Stream the annotated MJPEG feed at ``/video_feed``.
+
+    Wraps ``_mjpeg()`` in a Flask ``Response`` with the
+    ``multipart/x-mixed-replace`` MIME type. Compatible with ``<img>``
+    tags and HTTP dashboard clients.
+
+    Returns:
+        flask.Response: A streaming MJPEG response.
+    """
     return Response(_mjpeg(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 @app.route("/detections")
 def detections():
+    """Return the latest detection list as JSON at ``/detections``.
+
+    Reads ``latest_detections`` under ``det_lock`` and serialises it.
+    Each entry contains ``box`` ([x1,y1,x2,y2] pixels), ``conf``
+    (float), ``keypoints`` (list of [x,y,conf] tuples),
+    ``alert_kps`` (list of keypoint indices in zone), and
+    ``alert_names`` (list of readable joint name strings).
+
+    Returns:
+        dict: JSON-serialisable dict with keys ``detections`` (list),
+        ``count`` (int), and ``timestamp`` (ISO 8601 string).
+    """
     with det_lock:
         dets = list(latest_detections)
     return {"detections": dets, "count": len(dets), "timestamp": datetime.now().isoformat()}
 
 @app.route("/status")
 def status():
+    """Return server and detection status as JSON at ``/status``.
+
+    Returns:
+        dict: JSON-serialisable dict with keys:
+            ``camera`` (str), ``model`` (str), ``resolution`` (str),
+            ``fps_actual`` (float), ``persons`` (int),
+            ``zone_alert`` (bool), ``uptime_sec`` (float),
+            ``stream_url`` (str).
+    """
     with det_lock:
         dets = latest_detections
     alert = any(p.get("alert_kps") for p in dets)

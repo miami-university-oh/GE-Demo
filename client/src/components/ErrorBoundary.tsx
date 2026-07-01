@@ -11,6 +11,13 @@ interface State {
   error: Error | null;
 }
 
+/**
+ * React class component that catches render errors thrown anywhere in its
+ * child subtree. Uses `getDerivedStateFromError` to transition into an
+ * error state, then renders a fallback UI showing the error stack trace
+ * and a "Reload Page" button that calls `window.location.reload()`.
+ * In the normal (no-error) case it renders `children` unchanged.
+ */
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);

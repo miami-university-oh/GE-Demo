@@ -1,6 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
+/**
+ * Full-screen login page for the IIoT Building Dashboard.
+ * Submits credentials to `useAuth().login` with a 400 ms artificial delay
+ * to show a loading state. Displays an inline error message on invalid
+ * credentials. On success, `AuthGate` re-renders and redirects the user
+ * to the app without an explicit navigation call.
+ */
 export default function Login() {
   const { login } = useAuth();
   const [username, setUsername] = useState("");

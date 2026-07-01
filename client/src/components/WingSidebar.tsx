@@ -24,6 +24,16 @@ const WING_ACCENT: Record<Wing, string> = {
   north: '#ef4444',
 };
 
+/**
+ * Renders a single zone list item inside a wing section. Shows a
+ * status-colored glow dot, the zone's short code, full name (truncated),
+ * and current temperature. The selected zone is highlighted with a blue
+ * background and border.
+ *
+ * @param zone       - Zone data to display.
+ * @param isSelected - Whether this zone is currently selected.
+ * @param onClick    - Callback invoked when the row is clicked.
+ */
 function ZoneRow({
   zone,
   isSelected,
@@ -69,6 +79,20 @@ function ZoneRow({
   );
 }
 
+/**
+ * Collapsible section representing one building wing in the sidebar.
+ * The header shows the wing name, accent color, and badge counts for
+ * critical and warning zones. When expanded, zones are grouped and
+ * rendered under Basement, Floor 1, and Floor 2 sub-headings via
+ * `ZoneRow`. Clicking the header toggles expansion and activates the wing.
+ *
+ * @param wing          - Wing identifier.
+ * @param zones         - All zones for this wing.
+ * @param selectedZoneId - ID of the currently selected zone.
+ * @param onSelectZone  - Callback when a zone row is clicked.
+ * @param isActive      - Whether this wing is the currently active wing.
+ * @param onActivate    - Callback to activate this wing.
+ */
 function WingSection({
   wing,
   zones,
@@ -198,6 +222,16 @@ function WingSection({
   );
 }
 
+/**
+ * Left sidebar that renders one `WingSection` per wing in east → west →
+ * north order. The sidebar header displays the total monitored zone count.
+ *
+ * @param zones          - All building zones; filtered per-wing before passing to WingSection.
+ * @param selectedZoneId - ID of the currently selected zone.
+ * @param onSelectZone   - Callback when a zone is selected.
+ * @param activeWing     - The currently active/highlighted wing.
+ * @param onSelectWing   - Callback when a wing is activated.
+ */
 export function WingSidebar({
   zones,
   selectedZoneId,

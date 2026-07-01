@@ -5,6 +5,15 @@ import { ArrowLeft, ExternalLink, RefreshCw, Radio, CircleOff } from "lucide-rea
 const DASHBOARD_URL = "http://localhost:8080";
 const POLL_INTERVAL = 3000;
 
+/**
+ * UR5e RTDE Dashboard page.
+ *
+ * Probes `http://localhost:8080` every 3 seconds to check whether the
+ * Python `ur5e_dashboard.py` Dash server is running. Renders an inline
+ * iframe when the server is online, or an "offline" placeholder with a
+ * manual refresh button when it is not. A toolbar provides a back
+ * navigation link to the Building Dashboard.
+ */
 export default function UR5eDashboard() {
   const [, navigate] = useLocation();
   const [status, setStatus] = useState<"checking" | "online" | "offline">("checking");

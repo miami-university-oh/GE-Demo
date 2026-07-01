@@ -10,6 +10,15 @@ interface AlertTickerProps {
   alerts: Alert[];
 }
 
+/**
+ * Renders a 28 px tall horizontal scrolling ticker bar.
+ * When `alerts` is non-empty, shows up to 12 real alerts in a seamlessly
+ * looping marquee; alert severity drives the icon and dot color
+ * (critical → red, warn → amber, ok → green). When `alerts` is empty,
+ * displays three "all nominal" placeholder status messages instead.
+ *
+ * @param alerts - Active building alerts to display in the ticker.
+ */
 export function AlertTicker({ alerts }: AlertTickerProps) {
   const hasAlerts = alerts.length > 0;
 

@@ -9,6 +9,10 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Home from "./pages/Home";
 import UR5eDashboard from "./pages/UR5eDashboard";
 
+/**
+ * Renders the app's route tree via wouter's Switch.
+ * Maps `/` → Home, `/ur5e` → UR5eDashboard, and catch-all → NotFound.
+ */
 function Router() {
   return (
     <Switch>
@@ -20,11 +24,21 @@ function Router() {
   );
 }
 
+/**
+ * Guards the route tree behind authentication.
+ * Reads `authenticated` from AuthContext and renders Login when the user
+ * is unauthenticated; otherwise renders Router.
+ */
 function AuthGate() {
   const { authenticated } = useAuth();
   return authenticated ? <Router /> : <Login />;
 }
 
+/**
+ * Root application component.
+ * Wraps the component tree in ErrorBoundary, ThemeProvider (dark),
+ * AuthProvider, TooltipProvider, and Toaster before rendering AuthGate.
+ */
 function App() {
   return (
     <ErrorBoundary>

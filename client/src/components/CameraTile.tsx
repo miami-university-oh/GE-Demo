@@ -21,6 +21,16 @@ interface CameraTileProps {
 }
 
 // ── Simulated video background ────────────────────────────────
+/**
+ * Renders a Canvas element that animates a synthetic MJPEG-style video
+ * feed: a dark gradient background, a subtle grid, per-pixel noise grain,
+ * and a travelling scan-line effect — all producing a convincing
+ * "no-signal" camera aesthetic. When `alarmActive` is true an additional
+ * red tint pulsed via `Math.sin` is composited over the scene.
+ * Used as a fallback when no live stream URL is available.
+ *
+ * @param alarmActive - When true, overlays a red pulsing tint on the canvas.
+ */
 function SimulatedVideo({ alarmActive }: { alarmActive: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
@@ -95,6 +105,13 @@ function SimulatedVideo({ alarmActive }: { alarmActive: boolean }) {
 }
 
 // ── Detect stream type ───────────────────────────────────────
+/**
+ * Returns `true` when `url` does not contain `.m3u8`, indicating the
+ * stream should be treated as an MJPEG feed (e.g. a Flask `/video_feed`
+ * endpoint) rather than an HLS playlist.
+ *
+ * @param url - Stream URL to inspect.
+ */
 function isMjpegStream(url: string): boolean {
   // MJPEG streams typically come from /video_feed endpoints
   // HLS streams end in .m3u8
@@ -102,6 +119,17 @@ function isMjpegStream(url: string): boolean {
 }
 
 // ── Live MJPEG stream (RealSense / Flask) ─────────────────────
+/**
+ * Renders an `<img>` tag pointed at an MJPEG stream URL. The browser's
+ * built-in multipart/x-mixed-replace handling drives the frame updates.
+ * A slight brightness/saturation filter is applied when `alarmActive` is
+ * true. Calls `onError` if the image fails to load so the parent can
+ * fall back to `SimulatedVideo`.
+ *
+ * @param streamUrl   - MJPEG endpoint URL.
+ * @param alarmActive - When true, dims and saturates the image filter.
+ * @param onError     - Callback invoked on image load failure.
+ */
 function MjpegVideo({
   streamUrl,
   alarmActive,
@@ -126,6 +154,17 @@ function MjpegVideo({
 }
 
 // ── Live HLS video player ─────────────────────────────────────
+/**
+ * Renders an HLS video player. For `.m3u8` URLs, uses hls.js in
+ * low-latency mode when supported; falls back to native `<video src>`
+ * for Safari's built-in HLS. For other URL formats, calls `onError`
+ * immediately. The hls.js instance is destroyed on unmount to prevent
+ * memory leaks.
+ *
+ * @param streamUrl   - HLS playlist URL (`.m3u8`).
+ * @param alarmActive - When true, applies a dim/saturate filter to the video.
+ * @param onError     - Callback invoked on fatal stream or load error.
+ */
 function LiveVideo({
   streamUrl,
   alarmActive,
@@ -198,6 +237,16 @@ function LiveVideo({
 }
 
 // ── YOLO bounding box overlay ─────────────────────────────────
+/**
+ * SVG overlay rendered on top of the video feed (pointer-events disabled).
+ * For each detection, draws corner-bracket style bounding boxes using
+ * normalised coordinates scaled to `width` × `height`, with a semi-
+ * transparent label background and a "Label confidence%" annotation.
+ *
+ * @param detections - Array of YOLO bounding box detections to render.
+ * @param width      - Reference width of the video frame in pixels.
+ * @param height     - Reference height of the video frame in pixels.
+ */
 function DetectionOverlay({ detections, width, height }: {
   detections: BoundingBox[];
   width: number;
@@ -245,6 +294,23 @@ function DetectionOverlay({ detections, width, height }: {
 }
 
 // ── Main CameraTile ───────────────────────────────────────────
+/**
+ * Full camera tile component for a single YOLO-monitored camera feed.
+ * Selects the appropriate video renderer based on the stream URL:
+ * - No URL or stream error → `SimulatedVideo` (canvas fallback).
+ * - MJPEG URL → `MjpegVideo` (`<img>` multipart stream).
+ * - HLS `.m3u8` URL → `LiveVideo` (hls.js player).
+ *
+ * Renders on top of the video: a `DetectionOverlay` for YOLO bounding
+ * boxes, PPE compliance rate and counts, safety zone status chips, an
+ * alarm banner when active, and a detection count badge. A printable
+ * compliance report is accessible via a dialog.
+ *
+ * @param camera          - Camera data including stream URL, detections, PPE stats, and safety zones.
+ * @param onRequestReport - Optional callback triggered when the report button is clicked.
+ * @param expanded        - When true the tile renders in an expanded layout.
+ * @param onExpand        - Callback to request expansion of this tile.
+ */
 export function CameraTile({ camera, onRequestReport, expanded = false, onExpand }: CameraTileProps) {
   const [showReport, setShowReport] = useState(false);
   const [streamError, setStreamError] = useState(false);

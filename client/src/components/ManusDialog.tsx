@@ -18,6 +18,23 @@ interface ManusDialogProps {
   onClose?: () => void;
 }
 
+/**
+ * Modal dialog prompting the user to log in with Manus.
+ *
+ * Supports both controlled and uncontrolled open modes:
+ * - **Controlled**: pass `open` + `onOpenChange`; the parent owns visibility state.
+ * - **Uncontrolled**: omit `onOpenChange`; internal state mirrors the initial `open` prop.
+ *
+ * Calls `onLogin` when the "Login with Manus" button is clicked, and
+ * `onClose` (if provided) whenever the dialog is dismissed.
+ *
+ * @param title        - Optional dialog title text.
+ * @param logo         - Optional URL for a logo image displayed above the title.
+ * @param open         - Whether the dialog is open (default `false`).
+ * @param onLogin      - Callback invoked when the login button is clicked.
+ * @param onOpenChange - Optional controlled open-state change handler.
+ * @param onClose      - Optional callback invoked when the dialog closes.
+ */
 export function ManusDialog({
   title,
   logo,

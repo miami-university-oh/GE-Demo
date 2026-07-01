@@ -33,6 +33,18 @@ const MACHINE_IMAGES = {
 };
 
 // ── Machine image banner sub-component ───────────────────────
+/**
+ * Renders a hero image banner for a machine with an animated status pill
+ * overlay. Shows the machine photo cropped to 160 px height with a dark
+ * gradient overlay. The status pill displays "SIMULATED" when the bridge
+ * is not live, or the actual status string when live data is available.
+ *
+ * @param id           - Machine identifier key matching `MACHINE_IMAGES`.
+ * @param name         - Display name shown at the bottom of the banner.
+ * @param status       - Current machine status (e.g. "running", "idle").
+ * @param statusColor  - CSS color for the status pill accent.
+ * @param bridgeStatus - WebSocket bridge connection state; omit for always-live.
+ */
 function MachineBanner({ id, name, status, statusColor, bridgeStatus }: { id: string; name: string; status: string; statusColor: string; bridgeStatus?: string }) {
   const src = MACHINE_IMAGES[id as keyof typeof MACHINE_IMAGES];
   if (!src) return null;
@@ -73,6 +85,15 @@ function MachineBanner({ id, name, status, statusColor, bridgeStatus }: { id: st
 
 // ── Shared sub-components ─────────────────────────────────────
 
+/**
+ * Renders a single label–value row with an optional unit suffix and
+ * accent color. A faint bottom border separates consecutive rows.
+ *
+ * @param label - Human-readable row label.
+ * @param value - Numeric or string value to display.
+ * @param unit  - Optional unit string appended after the value.
+ * @param color - Optional accent color for the value text.
+ */
 function DataRow({ label, value, unit, color }: { label: string; value: string | number; unit?: string; color?: string }) {
   return (
     <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid oklch(1 0 0 / 5%)' }}>
@@ -84,6 +105,15 @@ function DataRow({ label, value, unit, color }: { label: string; value: string |
   );
 }
 
+/**
+ * Renders a compact 36 px Recharts `AreaChart` sparkline with a gradient
+ * fill and a minimal tooltip. Used inside machine panels to show recent
+ * history for a single metric.
+ *
+ * @param data    - Array of data objects (e.g. equipment history records).
+ * @param dataKey - Key of the numeric field to plot.
+ * @param color   - Stroke and gradient accent color.
+ */
 function MiniSparkline({ data, dataKey, color }: { data: any[]; dataKey: string; color: string }) {
   return (
     <ResponsiveContainer width="100%" height={36}>
@@ -105,6 +135,14 @@ function MiniSparkline({ data, dataKey, color }: { data: any[]; dataKey: string;
   );
 }
 
+/**
+ * Renders an animated status badge pill. When the bridge is live and the
+ * machine is running, the badge pulses. Shows "SIM" in grey when the bridge
+ * is offline (simulated data).
+ *
+ * @param status       - Machine status key (e.g. "running", "alarm").
+ * @param bridgeStatus - Optional bridge connection state; defaults to treating as live.
+ */
 function StatusBadge({ status, bridgeStatus }: { status: string; bridgeStatus?: string }) {
   const isLive = bridgeStatus === 'live' || bridgeStatus === undefined;
   const color = isLive
@@ -125,6 +163,15 @@ function StatusBadge({ status, bridgeStatus }: { status: string; bridgeStatus?: 
   );
 }
 
+/**
+ * Renders a labeled progress bar showing how far through the current cycle
+ * the machine is. Both `current` and `total` are in seconds and are
+ * formatted as `M:SS` above the bar.
+ *
+ * @param current - Elapsed cycle time in seconds.
+ * @param total   - Total expected cycle time in seconds.
+ * @param color   - Accent color for the progress bar fill and glow.
+ */
 function CycleProgress({ current, total, color }: { current: number; total: number; color: string }) {
   const pct = total > 0 ? (current / total) * 100 : 0;
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -142,6 +189,12 @@ function CycleProgress({ current, total, color }: { current: number; total: numb
   );
 }
 
+/**
+ * Renders a list of active alarm strings as red-accented rows. Returns
+ * `null` when the `alarms` array is empty.
+ *
+ * @param alarms - Array of alarm description strings.
+ */
 function AlarmList({ alarms }: { alarms: string[] }) {
   if (!alarms.length) return null;
   return (
@@ -159,6 +212,13 @@ function AlarmList({ alarms }: { alarms: string[] }) {
 
 // ── Haas VF-2SS Panel ─────────────────────────────────────────
 
+/**
+ * Collapsible data panel for the Haas VF-2SS Vertical Machining Centre.
+ * Displays spindle RPM/load, axis positions, feed/rapid overrides, coolant
+ * state, active tool, cycle progress, power draw, and active alarms.
+ *
+ * @param data - Live or simulated Haas VMC telemetry.
+ */
 function VMCPanel({ data }: { data: HaasVMCData }) {
   const [open, setOpen] = useState(true);
   const sc = MACHINE_STATUS_COLOR[data.status];
@@ -277,6 +337,10 @@ const TRAINING_CLIPS = [
   { src: '/videos/demo1.mp4',        title: 'Demo — Nov 19' },
 ];
 
+/**
+ * Collapsible panel listing embedded training video clips for the Makino
+ * Lab. Videos are rendered as `<video>` elements with controls.
+ */
 function TrainingPanel() {
   const [open, setOpen] = useState(true);
   const accent = '#f472b6';
@@ -337,6 +401,15 @@ function TrainingPanel() {
 
 // ── Haas ST-10 Panel ──────────────────────────────────────────
 
+/**
+ * Collapsible data panel for the Haas TL-1 CNC Lathe.
+ * Displays spindle RPM/load, X/Z axis positions, chuck pressure, CSS mode,
+ * coolant temperature, active tool, cycle progress, and active alarms.
+ * Shows a "SIMULATED" badge when the Haas bridge WebSocket is not live.
+ *
+ * @param data         - Live or simulated Haas lathe telemetry.
+ * @param bridgeStatus - WebSocket bridge connection state.
+ */
 function LathePanel({ data, bridgeStatus }: { data: HaasLathData; bridgeStatus?: string }) {
   const [open, setOpen] = useState(true);
   const sc = MACHINE_STATUS_COLOR[data.status];
@@ -434,6 +507,16 @@ function LathePanel({ data, bridgeStatus }: { data: HaasLathData; bridgeStatus?:
 
 // ── UR5e Cobot Panel ──────────────────────────────────────────
 
+/**
+ * Collapsible data panel for the Universal Robots UR5e cobot.
+ * Displays robot mode, safety status, TCP position and speed, all six
+ * joint angles, payload, collaborative mode state, cycle metrics,
+ * power draw, and active safety alarms.
+ * Shows a "SIMULATED" badge when the UR5e bridge WebSocket is not live.
+ *
+ * @param data         - Live or simulated UR5e telemetry.
+ * @param bridgeStatus - WebSocket bridge connection state.
+ */
 function CobotPanel({ data, bridgeStatus }: { data: UR5eData; bridgeStatus?: string }) {
   const [open, setOpen] = useState(true);
   const sc = MACHINE_STATUS_COLOR[data.status];
@@ -556,6 +639,13 @@ function CobotPanel({ data, bridgeStatus }: { data: UR5eData; bridgeStatus?: str
 
 // ── Makino a51nx Panel ───────────────────────────────────────────
 
+/**
+ * Collapsible data panel for the Makino a51nx Horizontal Machining Centre.
+ * Displays spindle RPM/load, axis positions, overrides, pallet status,
+ * coolant, tool wear, cycle progress, parts count, and active alarms.
+ *
+ * @param data - Live or simulated Makino a51nx telemetry.
+ */
 function MakinoA51nxPanel({ data }: { data: MakinoA51nxData }) {
   const sc = MACHINE_STATUS_COLOR[data.status];
   const sl = MACHINE_STATUS_LABEL[data.status];
@@ -616,6 +706,14 @@ function MakinoA51nxPanel({ data }: { data: MakinoA51nxData }) {
 
 // ── Makino d200Z Panel ───────────────────────────────────────────
 
+/**
+ * Collapsible data panel for the Makino d200Z 5-Axis VMC.
+ * Displays spindle RPM/load, X/Y/Z/A/C axis positions and tilt/rotary
+ * angles, overrides, tool wear, coolant temperature, cycle progress,
+ * parts count, and active alarms.
+ *
+ * @param data - Live or simulated Makino d200Z telemetry.
+ */
 function MakinoD200ZPanel({ data }: { data: MakinoD200ZData }) {
   const sc = MACHINE_STATUS_COLOR[data.status];
   const sl = MACHINE_STATUS_LABEL[data.status];
@@ -675,6 +773,13 @@ function MakinoD200ZPanel({ data }: { data: MakinoD200ZData }) {
 
 // ── Makino PS95 Panel ────────────────────────────────────────────
 
+/**
+ * Collapsible data panel for the Makino PS95 Precision VMC.
+ * Displays spindle RPM/load, axis positions, overrides, coolant state,
+ * tool wear, cycle progress, parts count, and active alarms.
+ *
+ * @param data - Live or simulated Makino PS95 telemetry.
+ */
 function MakinoPS95Panel({ data }: { data: MakinoPS95Data }) {
   const sc = MACHINE_STATUS_COLOR[data.status];
   const sl = MACHINE_STATUS_LABEL[data.status];
@@ -735,6 +840,15 @@ function MakinoPS95Panel({ data }: { data: MakinoPS95Data }) {
 
 // ── Lab Floor Map (Area M / Grid 14) ─────────────────────────
 
+/**
+ * Renders an SVG schematic floor map of the Makino Lab (Area M / Grid 14).
+ * Equipment blocks are clickable and highlighted when selected. Two camera
+ * icon overlays indicate CAM-01 and CAM-02 positions. Clicking an equipment
+ * block scrolls the panel list to that machine.
+ *
+ * @param selectedEquipment   - ID of the currently selected machine, or null.
+ * @param onSelectEquipment   - Callback invoked with the equipment ID on click.
+ */
 function LabFloorMap({ selectedEquipment, onSelectEquipment }: {
   selectedEquipment: string | null;
   onSelectEquipment: (id: string) => void;
@@ -855,6 +969,19 @@ interface MakinoLabProps {
   onBack: () => void;
 }
 
+/**
+ * Makino Lab deep-dive page for the Advanced Manufacturing Hub.
+ *
+ * Subscribes to both `equipmentStore` (lathe, cobot, three Makino machines,
+ * bridge status) and `cameraStore` (CAM-01, CAM-02) on mount and mirrors
+ * their state into local React state so each child panel re-renders on
+ * update. Renders a header summary bar, a lab floor-map SVG with clickable
+ * equipment icons, collapsible machine data panels for all six machines,
+ * and two `CameraTile` components for the YOLO camera feeds.
+ *
+ * @param onBack - Callback invoked when the user navigates back to the
+ *                 main Building Dashboard.
+ */
 export function MakinoLab({ onBack }: MakinoLabProps) {
   const [lathe, setLathe] = useState<HaasLathData>(equipmentStore.lathe);
   const [cobot, setCobot] = useState<UR5eData>(equipmentStore.cobot);

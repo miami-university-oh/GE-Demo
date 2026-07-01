@@ -1,6 +1,15 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
+/**
+ * Builds the OAuth redirect URL using VITE environment variables.
+ *
+ * Constructs a URL pointing to `{VITE_OAUTH_PORTAL_URL}/app-auth` with `appId`,
+ * `redirectUri`, `state` (the Base64-encoded redirect URI), and `type=signIn` as
+ * query parameters. Must be called at runtime so the `redirectUri` reflects the
+ * current `window.location.origin`.
+ *
+ * @returns The fully-formed OAuth sign-in URL as a string.
+ */
 export const getLoginUrl = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;

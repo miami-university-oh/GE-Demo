@@ -92,6 +92,12 @@ const FORGE_BASE_URL =
   "https://forge.butterfly-effect.dev";
 const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
 
+/**
+ * Dynamically injects the Google Maps JS SDK `<script>` tag via the
+ * Forge proxy URL. Resolves with `null` once the script fires its `load`
+ * event. Rejects silently on error (logs to console only) to avoid
+ * unhandled promise rejections crashing the app.
+ */
 function loadMapScript() {
   return new Promise(resolve => {
     const script = document.createElement("script");
@@ -116,6 +122,18 @@ interface MapViewProps {
   onMapReady?: (map: google.maps.Map) => void;
 }
 
+/**
+ * Renders a full Google Map inside a `div` container. On mount, loads
+ * the Maps SDK via `loadMapScript`, instantiates a `google.maps.Map`
+ * with the provided center and zoom, and calls `onMapReady` with the
+ * map instance so callers can imperatively control the map (add markers,
+ * listen for events, etc.).
+ *
+ * @param className     - Additional CSS classes for the map container div.
+ * @param initialCenter - Initial map center (default: San Francisco).
+ * @param initialZoom   - Initial zoom level (default: 12).
+ * @param onMapReady    - Callback receiving the `google.maps.Map` instance once ready.
+ */
 export function MapView({
   className,
   initialCenter = { lat: 37.7749, lng: -122.4194 },

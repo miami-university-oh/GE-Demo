@@ -28,6 +28,16 @@ interface BuildingHeaderProps {
   currentTime: Date;
 }
 
+/**
+ * Renders a compact labeled KPI pill with a leading icon and a monospace
+ * value. Used in the header to surface total power, average temperature,
+ * and occupancy at a glance.
+ *
+ * @param icon  - Lucide icon component rendered to the left of the label.
+ * @param label - Short uppercase descriptor (e.g. "Total Power").
+ * @param value - Formatted value string (e.g. "12.4 kW").
+ * @param color - Accent color applied to the icon and value text.
+ */
 function KpiChip({
   icon: Icon,
   label,
@@ -57,6 +67,15 @@ function KpiChip({
   );
 }
 
+/**
+ * Renders a glowing colored dot alongside a numeric count and a short
+ * label. Used to summarise zone status totals (OK / WARN / CRIT / OFFLINE)
+ * in the header's zone-status row.
+ *
+ * @param count - Number of zones in this status category.
+ * @param color - CSS color for both the dot glow and the count text.
+ * @param label - Status label displayed after the count (e.g. "WARN").
+ */
 function StatusDot({ count, color, label }: { count: number; color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -71,6 +90,15 @@ function StatusDot({ count, color, label }: { count: number; color: string; labe
   );
 }
 
+/**
+ * Renders a machine bridge connection badge showing the device label and
+ * its current bridge status as a color-coded text chip: LIVE (green),
+ * CONN/connecting (amber), or SIM/simulated (grey). A pulsing dot is
+ * shown when the status is `live`.
+ *
+ * @param label  - Short device identifier shown before the status text (e.g. "UR5e").
+ * @param status - Current bridge status from `equipmentStore`.
+ */
 function ConnectionBadge({ label, status }: { label: string; status: BridgeStatus }) {
   const color = status === 'live' ? '#22c55e' : status === 'connecting' ? '#fbbf24' : '#6b7280';
   const bg = status === 'live' ? 'rgba(34,197,94,0.10)' : status === 'connecting' ? 'rgba(251,191,36,0.10)' : 'rgba(107,114,128,0.08)';
@@ -94,6 +122,11 @@ function ConnectionBadge({ label, status }: { label: string; status: BridgeStatu
   );
 }
 
+/**
+ * Subscribes to `equipmentStore` and renders `ConnectionBadge` components
+ * for the HAAS TL-1 and UR5e machines. Re-renders automatically whenever
+ * the store emits a change, keeping bridge status indicators live.
+ */
 function MachineConnectionStatus() {
   const [haasStatus, setHaasStatus] = useState<BridgeStatus>(equipmentStore.haasBridgeStatus);
   const [ur5eStatus, setUr5eStatus] = useState<BridgeStatus>(equipmentStore.ur5eBridgeStatus);
@@ -114,6 +147,18 @@ function MachineConnectionStatus() {
   );
 }
 
+/**
+ * Top header bar for the IIoT Building Dashboard.
+ * Renders (left to right): brand identity, zone status dot counts,
+ * KPI chips (power / temperature / occupancy), HAAS + UR5e machine
+ * bridge badges, a UR5e dashboard navigation button, a critical-alert
+ * count badge (when applicable), a live activity indicator, the current
+ * time, and a logout button.
+ *
+ * @param summary     - Aggregated building metrics (zone counts, energy, temp, occupancy).
+ * @param alerts      - All active building alerts; used to derive the critical-alert count.
+ * @param currentTime - Live `Date` instance used to render the clock display.
+ */
 export function BuildingHeader({ summary, alerts, currentTime }: BuildingHeaderProps) {
   const { username, logout } = useAuth();
   const [, navigate] = useLocation();

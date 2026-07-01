@@ -3,6 +3,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, Home } from "lucide-react";
 import { useLocation } from "wouter";
 
+/**
+ * 404 Not Found page.
+ * Renders a centred card with an animated pulsing `AlertCircle` icon,
+ * a "404" heading, and a "Go Home" button that navigates to `/` via
+ * wouter's `useLocation`.
+ */
 export default function NotFound() {
   const [, setLocation] = useLocation();
 

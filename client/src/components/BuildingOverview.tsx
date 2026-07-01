@@ -21,6 +21,15 @@ const WING_ACCENT: Record<Wing, string> = {
   north: '#ef4444',
 };
 
+/**
+ * Renders a summary card for a single building wing. Displays a mini
+ * donut chart of zone statuses (OK / Warn / Critical / Offline), average
+ * temperature, total energy consumption, and per-status zone counts.
+ * The left border is accent-colored by wing identity.
+ *
+ * @param wing  - Wing identifier (`east` | `west` | `north`).
+ * @param zones - All zones belonging to this wing.
+ */
 function WingCard({ wing, zones }: { wing: Wing; zones: Zone[] }) {
   const ok = zones.filter(z => z.status === 'ok').length;
   const warn = zones.filter(z => z.status === 'warn').length;
@@ -92,6 +101,13 @@ function WingCard({ wing, zones }: { wing: Wing; zones: Zone[] }) {
   );
 }
 
+/**
+ * Collapsible bottom panel that renders a `WingCard` for each of the
+ * East, West, and North wings. The panel can be toggled open/closed via
+ * a header button; collapse state is managed with local state.
+ *
+ * @param zones - All building zones; filtered per-wing before passing to WingCard.
+ */
 export function BuildingOverview({ zones }: BuildingOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
 

@@ -20,6 +20,20 @@ export interface UseCompositionOptions<
 
 type TimerResponse = ReturnType<typeof setTimeout>;
 
+/**
+ * Provides IME-safe keyboard handling for `<input>` and `<textarea>` elements.
+ *
+ * Prevents `Enter` (without Shift) and `Escape` from firing while a CJK composition
+ * session is in progress. A Safari workaround defers the composition-end state reset
+ * via two nested `setTimeout` calls so that `onKeyDown` fires before the composing
+ * flag is cleared.
+ *
+ * @param options - Optional upstream handlers for `onKeyDown`, `onCompositionStart`,
+ *   and `onCompositionEnd` that are forwarded after the IME guard logic.
+ * @returns `{ onCompositionStart, onCompositionEnd, onKeyDown, isComposing }` — spread
+ *   these onto the target input element. `isComposing()` can be called imperatively to
+ *   check whether a composition session is active.
+ */
 export function useComposition<
   T extends HTMLInputElement | HTMLTextAreaElement = HTMLInputElement,
 >(options: UseCompositionOptions<T> = {}): UseCompositionReturn<T> {

@@ -35,6 +35,19 @@ interface ZonePanelProps {
   onClose: () => void;
 }
 
+/**
+ * Metric tile displaying an icon, label, monospace value with unit, and
+ * an optional sub-text line. Re-triggers a CSS count-up animation
+ * (`count-up` class) each time `value` changes by tracking the previous
+ * value via a ref.
+ *
+ * @param icon  - Lucide icon component shown in the tile header.
+ * @param label - Short uppercase descriptor.
+ * @param value - Numeric or string value to display prominently.
+ * @param unit  - Unit suffix displayed after the value (e.g. "°C").
+ * @param color - Accent color for the icon and value text.
+ * @param sub   - Optional secondary text line below the value.
+ */
 function MetricCard({
   icon: Icon,
   label,
@@ -92,7 +105,16 @@ function MetricCard({
   );
 }
 
-// Radial gauge for a single metric
+/**
+ * SVG 270° arc gauge that fills proportionally to `value / max`. The
+ * track arc is rendered in a dark background color; the fill arc is
+ * accented and glow-filtered. A percentage label is centered inside.
+ *
+ * @param value - Current metric value.
+ * @param max   - Maximum expected value (maps to 100% fill).
+ * @param color - Stroke and glow color for the filled arc.
+ * @param label - Short label displayed below the gauge SVG.
+ */
 function RadialGauge({ value, max, color, label }: { value: number; max: number; color: string; label: string }) {
   const pct = Math.min(value / max, 1);
   const r = 22;
@@ -127,6 +149,14 @@ function RadialGauge({ value, max, color, label }: { value: number; max: number;
   );
 }
 
+/**
+ * Thin Recharts `AreaChart` sparkline with a gradient fill and a minimal
+ * hover tooltip. Animation is disabled for live-data performance.
+ *
+ * @param data    - Array of data objects (zone history entries).
+ * @param dataKey - Key in each data object to plot on the y-axis.
+ * @param color   - Stroke color; also used for the gradient fill start.
+ */
 function Sparkline({ data, dataKey, color }: { data: any[]; dataKey: string; color: string }) {
   return (
     <ResponsiveContainer width="100%" height={60}>
@@ -163,6 +193,15 @@ function Sparkline({ data, dataKey, color }: { data: any[]; dataKey: string; col
   );
 }
 
+/**
+ * Horizontal bar showing the online/total equipment ratio. The filled
+ * portion is color-coded: green when >80 %, amber when >50 %, red
+ * otherwise. The label above the bar shows the raw "online/total ONLINE"
+ * counts.
+ *
+ * @param online - Number of equipment items currently online.
+ * @param total  - Total number of equipment items in the zone.
+ */
 function EquipmentBar({ online, total }: { online: number; total: number }) {
   const pct = total > 0 ? (online / total) * 100 : 0;
   const color = pct > 80 ? '#22c55e' : pct > 50 ? '#f59e0b' : '#ef4444';
@@ -186,6 +225,20 @@ function EquipmentBar({ online, total }: { online: number; total: number }) {
   );
 }
 
+/**
+ * Right-side detail panel for a selected building zone. Renders:
+ * - A status/location header with zone name and description.
+ * - A 2-column metric grid (temperature, humidity, CO₂, power, occupancy, AQI).
+ * - A row of radial gauges (humidity, air quality, network, equipment).
+ * - A network load progress bar.
+ * - An equipment online/total bar.
+ * - Three 60-minute sparkline trend charts (temperature, energy, CO₂).
+ * - An active alerts list (shown only when alerts exist).
+ * - A zone ID / timestamp footer.
+ *
+ * @param zone    - The zone whose data is displayed.
+ * @param onClose - Callback invoked when the panel's close button is clicked.
+ */
 export function ZonePanel({ zone, onClose }: ZonePanelProps) {
   const statusColor = STATUS_COLORS[zone.status];
   const s = zone.sensors;

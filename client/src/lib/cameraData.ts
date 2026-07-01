@@ -72,16 +72,42 @@ export const DETECTION_COLORS: Record<DetectionClass, string> = {
 
 // ── Helpers ──────────────────────────────────────────────────
 
+/**
+ * Returns a random float in [min, max).
+ *
+ * @param min - Lower bound (inclusive).
+ * @param max - Upper bound (exclusive).
+ */
 function randF(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
+/**
+ * Returns a random integer in [min, max].
+ *
+ * @param min - Lower bound (inclusive).
+ * @param max - Upper bound (inclusive).
+ */
 function randI(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+/**
+ * Returns a 6-character random alphanumeric string suitable for use as a {@link BoundingBox} ID.
+ */
 function uid() {
   return Math.random().toString(36).slice(2, 8);
 }
 
+/**
+ * Creates a {@link BoundingBox} array representing one detected person at normalised position (x, y).
+ *
+ * Always emits a `person` box. If `withPPE` is true, adds compliant `hardhat` and `vest` boxes;
+ * otherwise adds a single random violation box (`no_hardhat` or `no_vest`).
+ *
+ * @param withPPE - Whether the person is wearing full PPE.
+ * @param x - Normalised horizontal position (0–1).
+ * @param y - Normalised vertical position (0–1).
+ * @returns Array of bounding boxes (person + PPE/violation overlays).
+ */
 function makePerson(withPPE: boolean, x: number, y: number): BoundingBox[] {
   const boxes: BoundingBox[] = [
     {
@@ -127,7 +153,14 @@ function makePerson(withPPE: boolean, x: number, y: number): BoundingBox[] {
 
 // ── Initial camera states ─────────────────────────────────────
 
-// CAM-01: RealSense L515 — Human/Arm Detection
+/**
+ * Creates the initial {@link YOLOCameraData} state for CAM-01 (Intel RealSense L515).
+ *
+ * CAM-01 monitors the UR5e cobot cell for human proximity and safety-zone breaches.
+ * Starts with no detections and three clear safety zones (Cobot Reach, Pinch Point, Tool Change).
+ *
+ * @returns Initial YOLOCameraData for CAM-01.
+ */
 function makeInitialCam1(): YOLOCameraData {
   return {
     id: 'cam-01',
@@ -153,7 +186,14 @@ function makeInitialCam1(): YOLOCameraData {
   };
 }
 
-// CAM-02: Amcrest IP — PPE/Personnel/Occupancy Monitoring
+/**
+ * Creates the initial {@link YOLOCameraData} state for CAM-02 (Amcrest IP overhead camera).
+ *
+ * CAM-02 monitors PPE compliance and occupancy across the Makino Lab. Initialises with a
+ * randomised group of 2–4 persons, each with an 80% probability of wearing full PPE.
+ *
+ * @returns Initial YOLOCameraData for CAM-02.
+ */
 function makeInitialCam2(): YOLOCameraData {
   const persons = randI(2, 4);
   const detections: BoundingBox[] = [];
@@ -202,6 +242,13 @@ class CameraStore {
   private listeners = new Set<Listener>();
   private timer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * Registers a listener for camera data updates. Starts the simulation timer on the first
+   * subscriber and stops it when the last subscriber unsubscribes.
+   *
+   * @param fn - Callback invoked after every simulation tick.
+   * @returns An unsubscribe function.
+   */
   subscribe(fn: Listener) {
     this.listeners.add(fn);
     if (this.listeners.size === 1) this.startSim();
@@ -211,16 +258,28 @@ class CameraStore {
     };
   }
 
+  /** Calls all registered listeners to signal updated camera data. */
   private notify() { this.listeners.forEach(fn => fn()); }
 
+  /** Starts the 2-second tick interval that drives camera simulation. */
   private startSim() {
     this.timer = setInterval(() => this.tick(), 2000);
   }
+  /** Clears the simulation tick interval. */
   private stopSim() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
 
+  /**
+   * Advances simulation state for both cameras and notifies listeners.
+   *
+   * - CAM-01: Randomly places a human near the cobot (20% probability) and evaluates
+   *   cobot reach / pinch-point zone breaches, triggering an alarm if breached.
+   * - CAM-02: Drifts personnel count by ±1, re-evaluates PPE compliance for each person
+   *   (15% violation rate), and independently checks each safety zone for a random breach
+   *   (6% per zone per tick).
+   */
   private tick() {
     // ── CAM-01 update: Human/Arm Detection ──
     const c1 = this.cam1;

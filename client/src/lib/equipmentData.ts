@@ -187,12 +187,40 @@ export type Equipment = HaasLathData | UR5eData | MakinoA51nxData | MakinoD200ZD
 
 // ── Simulation State ──────────────────────────────────────────
 
+/**
+ * Returns a random float in [min, max] rounded to `dec` decimal places.
+ *
+ * @param min - Lower bound (inclusive).
+ * @param max - Upper bound (inclusive).
+ * @param dec - Decimal places to round to. Defaults to 1.
+ */
 function rand(min: number, max: number, dec = 1) {
   return parseFloat((Math.random() * (max - min) + min).toFixed(dec));
 }
+/**
+ * Applies a small random delta to `val`, clamping the result to [min, max].
+ *
+ * @param val - Current value.
+ * @param delta - Maximum total change magnitude (applied as ±delta/2).
+ * @param min - Lower clamp bound.
+ * @param max - Upper clamp bound.
+ * @param dec - Decimal places to round the result to. Defaults to 1.
+ * @returns New value after drift and clamp.
+ */
 function drift(val: number, delta: number, min: number, max: number, dec = 1) {
   return parseFloat(Math.min(max, Math.max(min, val + (Math.random() - 0.5) * delta)).toFixed(dec));
 }
+/**
+ * Generates a seeded history array for equipment charts using a random walk.
+ *
+ * Starts from `init`, then for each step mutates each specified key by ±2% of its
+ * current value, producing `len` entries that look like realistic historical data.
+ *
+ * @param keys - Keys of T whose numeric values should be randomly walked.
+ * @param init - Starting values object (not mutated).
+ * @param len - Number of history entries to generate. Defaults to 40.
+ * @returns Array of `len` objects of type T.
+ */
 function makeHistory<T extends object>(keys: (keyof T)[], init: T, len = 40): T[] {
   const arr: T[] = [];
   let cur = { ...init };
@@ -416,6 +444,16 @@ class EquipmentStore {
   private listeners = new Set<Listener>();
   private timer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * Registers a listener for equipment data updates.
+   *
+   * On the first subscriber: starts the simulation fallback timer and attempts to open
+   * WebSocket connections to both the Haas TL-1 and UR5e bridges. When the last
+   * subscriber unsubscribes, the sim timer is stopped and both bridges are disconnected.
+   *
+   * @param fn - Callback invoked whenever equipment state changes.
+   * @returns An unsubscribe function.
+   */
   subscribe(fn: Listener) {
     this.listeners.add(fn);
     if (this.listeners.size === 1) {
@@ -432,6 +470,13 @@ class EquipmentStore {
     };
   }
 
+  /**
+   * Opens a WebSocket connection to the Haas TL-1 bridge at {@link BRIDGE_CONFIG.haasTL1.url}.
+   *
+   * Parses incoming `tier1` / `tier2` / `tier4` structured messages as well as the legacy
+   * flat format, and maps fields onto `this.lathe`. Appends a history point on every
+   * message. Schedules an 8-second auto-reconnect on close while subscribers remain.
+   */
   // ── Haas TL-1 WebSocket bridge ──────────────────────────────
   private connectHaasBridge() {
     if (typeof WebSocket === 'undefined') return;
@@ -538,6 +583,13 @@ class EquipmentStore {
     }
   }
 
+  /**
+   * Opens a WebSocket connection to the UR5e bridge at {@link BRIDGE_CONFIG.ur5e.url}.
+   *
+   * Parses joint positions/velocities/torques, TCP pose and speed, safety mode, and
+   * robot/runtime mode codes, mapping them onto `this.cobot`. Appends a history point
+   * on every message. Schedules an 8-second auto-reconnect on close while subscribers remain.
+   */
   // ── UR5e WebSocket bridge ────────────────────────────────────
   private connectUR5eBridge() {
     if (typeof WebSocket === 'undefined') return;
@@ -680,6 +732,9 @@ class EquipmentStore {
     }
   }
 
+  /**
+   * Closes both WebSocket connections and clears any pending reconnect timers.
+   */
   private disconnectBridges() {
     if (this.haasWs)  { this.haasWs.close();  this.haasWs  = null; }
     if (this.ur5eWs)  { this.ur5eWs.close();  this.ur5eWs  = null; }
@@ -687,18 +742,34 @@ class EquipmentStore {
     if (this.ur5eReconnectTimer)  { clearTimeout(this.ur5eReconnectTimer);  this.ur5eReconnectTimer  = null; }
   }
 
+  /** Calls all registered listeners to signal updated equipment state. */
   private notify() {
     this.listeners.forEach(fn => fn());
   }
 
+  /** Starts the 1.5-second simulation tick interval used as a fallback when bridges are offline. */
   private startSim() {
     this.timer = setInterval(() => this.tick(), 1500);
   }
+  /** Clears the simulation tick interval. */
   private stopSim() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
 
+  /**
+   * Advances simulation state for all five machines and notifies listeners.
+   *
+   * - **Lathe**: drifts spindle RPM/load, feed rate, coolant, chuck pressure, tool wear,
+   *   and axis positions; increments cycle time and part count; sets a low-pressure alarm
+   *   when chuck pressure < 2.8 bar.
+   * - **Cobot**: drifts TCP speed/position, joint angles, payload, and temperature; triggers
+   *   a protective stop when human proximity < 50 cm, or reduced-speed mode < 100 cm.
+   * - **Makino A51NX / D200Z / PS95**: drifts spindle, feed, coolant, axes, and tool wear;
+   *   A51NX alternates pallet IDs on cycle completion; PS95 randomly starts cycles from idle.
+   *
+   * A history point is appended for each machine (capped at 40 entries) on every tick.
+   */
   private tick() {
     const now = Date.now();
 

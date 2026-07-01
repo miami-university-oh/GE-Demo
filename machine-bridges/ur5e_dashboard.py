@@ -62,6 +62,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     import websockets
+
     HAS_WEBSOCKETS = True
 except ImportError:
     HAS_WEBSOCKETS = False
@@ -71,7 +72,7 @@ except ImportError:
 # ══════════════════════════════════════════════════════════════════════════════
 
 try:
-    from nicegui import ui, app, run
+    from nicegui import app, run, ui
 except ImportError:
     print("ERROR: nicegui not installed. Run: pip install nicegui")
     sys.exit(1)
@@ -87,30 +88,34 @@ except ImportError:
 # ══════════════════════════════════════════════════════════════════════════════
 
 try:
+    import dashboard_client
     import rtde_control
     import rtde_io
     import rtde_receive
-    import dashboard_client
+
     HAS_RTDE = True
 except ImportError:
     HAS_RTDE = False
 
 try:
-    import pyrealsense2 as rs
     import cv2
     import numpy as np
+    import pyrealsense2 as rs
+
     HAS_REALSENSE = True
 except ImportError:
     HAS_REALSENSE = False
 
 try:
     from openvino.runtime import Core as OVCore
+
     HAS_OPENVINO = True
 except ImportError:
     HAS_OPENVINO = False
 
 try:
     import mediapipe as mp
+
     HAS_MEDIAPIPE = True
 except ImportError:
     HAS_MEDIAPIPE = False
@@ -130,79 +135,129 @@ log = logging.getLogger("ur5e_dashboard")
 #  CONSTANTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-JOINT_NAMES   = ["base", "shoulder", "elbow", "wrist1", "wrist2", "wrist3"]
-JOINT_LABELS  = ["Base", "Shoulder", "Elbow", "Wrist 1", "Wrist 2", "Wrist 3"]
-CART_AXES     = ["x", "y", "z", "rx", "ry", "rz"]
-FORCE_AXES    = ["Fx", "Fy", "Fz", "Mx", "My", "Mz"]
-MAX_TORQUES   = [150, 150, 75, 28, 28, 28]
+JOINT_NAMES = ["base", "shoulder", "elbow", "wrist1", "wrist2", "wrist3"]
+JOINT_LABELS = ["Base", "Shoulder", "Elbow", "Wrist 1", "Wrist 2", "Wrist 3"]
+CART_AXES = ["x", "y", "z", "rx", "ry", "rz"]
+FORCE_AXES = ["Fx", "Fy", "Fz", "Mx", "My", "Mz"]
+MAX_TORQUES = [150, 150, 75, 28, 28, 28]
 
-J_COLORS      = ["#00D4AA", "#00B4D8", "#4895EF", "#7B61FF", "#F472B6", "#FBBF24"]
-F_COLORS      = {"Fx": "#FF6B6B", "Fy": "#EE5A24", "Fz": "#F8B739",
-                 "Mx": "#A29BFE", "My": "#6C5CE7", "Mz": "#B8E994"}
+J_COLORS = ["#00D4AA", "#00B4D8", "#4895EF", "#7B61FF", "#F472B6", "#FBBF24"]
+F_COLORS = {
+    "Fx": "#FF6B6B",
+    "Fy": "#EE5A24",
+    "Fz": "#F8B739",
+    "Mx": "#A29BFE",
+    "My": "#6C5CE7",
+    "Mz": "#B8E994",
+}
 
 DIGITAL_INPUT_LABELS = (
-    [f"std_din_{i}" for i in range(8)] +
-    [f"cfg_din_{i}" for i in range(8)] +
-    ["tool_din_0", "tool_din_1"]
+    [f"std_din_{i}" for i in range(8)]
+    + [f"cfg_din_{i}" for i in range(8)]
+    + ["tool_din_0", "tool_din_1"]
 )
 DIGITAL_OUTPUT_LABELS = (
-    [f"std_dout_{i}" for i in range(8)] +
-    [f"cfg_dout_{i}" for i in range(8)] +
-    ["tool_dout_0", "tool_dout_1"]
+    [f"std_dout_{i}" for i in range(8)]
+    + [f"cfg_dout_{i}" for i in range(8)]
+    + ["tool_dout_0", "tool_dout_1"]
 )
 
 ROBOT_MODE_MAP = {
-    0: "DISCONNECTED",  1: "CONFIRM_SAFETY",  2: "BOOTING",
-    3: "POWER_OFF",     4: "POWER_ON",        5: "IDLE",
-    6: "BACKDRIVE",     7: "RUNNING",         8: "UPDATING",
-    9: "POWERING_OFF",  10: "ARM_BOOTING",    11: "ARM_UPDATING",
+    0: "DISCONNECTED",
+    1: "CONFIRM_SAFETY",
+    2: "BOOTING",
+    3: "POWER_OFF",
+    4: "POWER_ON",
+    5: "IDLE",
+    6: "BACKDRIVE",
+    7: "RUNNING",
+    8: "UPDATING",
+    9: "POWERING_OFF",
+    10: "ARM_BOOTING",
+    11: "ARM_UPDATING",
 }
 SAFETY_MODE_MAP = {
-    1: "NORMAL",        2: "REDUCED",         3: "PROTECTIVE_STOP",
-    4: "RECOVERY",      5: "SAFEGUARD_STOP",  6: "SYS_EMERGENCY_STOP",
-    7: "ROBOT_EMERGENCY_STOP", 8: "VIOLATION", 9: "FAULT",
+    1: "NORMAL",
+    2: "REDUCED",
+    3: "PROTECTIVE_STOP",
+    4: "RECOVERY",
+    5: "SAFEGUARD_STOP",
+    6: "SYS_EMERGENCY_STOP",
+    7: "ROBOT_EMERGENCY_STOP",
+    8: "VIOLATION",
+    9: "FAULT",
 }
 SAFETY_STATUS_MAP = {
-    1: "NORMAL",                    2: "REDUCED",
-    3: "PROTECTIVE_STOP",           4: "RECOVERY",
-    5: "SAFEGUARD_STOP",            6: "SYSTEM_EMERGENCY_STOP",
-    7: "ROBOT_EMERGENCY_STOP",      8: "VIOLATION",
-    9: "FAULT",                     12: "AUTOMATIC_MODE_SAFEGUARD_STOP",
+    1: "NORMAL",
+    2: "REDUCED",
+    3: "PROTECTIVE_STOP",
+    4: "RECOVERY",
+    5: "SAFEGUARD_STOP",
+    6: "SYSTEM_EMERGENCY_STOP",
+    7: "ROBOT_EMERGENCY_STOP",
+    8: "VIOLATION",
+    9: "FAULT",
+    12: "AUTOMATIC_MODE_SAFEGUARD_STOP",
     13: "SYSTEM_THREE_POSITION_ENABLING_STOP",
     14: "TP_THREE_POSITION_ENABLING_STOP",
-    15: "IMMI_EMERGENCY_STOP",      16: "IMMI_SAFEGUARD_STOP",
+    15: "IMMI_EMERGENCY_STOP",
+    16: "IMMI_SAFEGUARD_STOP",
     17: "PROFISAFE_WAITING_FOR_PARAMETERS",
     18: "PROFISAFE_AUTOMATIC_MODE_SAFEGUARD_STOP",
-    19: "PROFISAFE_SAFEGUARD_STOP", 20: "PROFISAFE_EMERGENCY_STOP",
+    19: "PROFISAFE_SAFEGUARD_STOP",
+    20: "PROFISAFE_EMERGENCY_STOP",
     22: "SAFETY_API_SAFEGUARD_STOP",
 }
 TIME_SCALE_SOURCE_MAP = {
-    -1: "OTHER",                0: "NOT_RUNNING",
-    1:  "NOT_SCALED",           2: "JOINT_TORQUE_LIMIT",
-    3:  "JOINT_ACCEL_LIMIT",    4: "POWER_SUPPLY_LIMIT",
-    5:  "MOMENTUM_LIMIT",       6: "STOPPING_TIME_LIMIT",
-    7:  "STOPPING_DIST_LIMIT",  8: "TOOL_SPEED_LIMIT",
-    9:  "ELBOW_SPEED_LIMIT",    10: "JOINT_SPEED_LIMIT",
-    11: "SMOOTH_SAFETY_TRANS",  12: "STOP_DIST_SAFETY_API",
-    13: "TOOL_WRENCH_LIMIT",    14: "EXT_AXIS_SPEED_LIMIT",
+    -1: "OTHER",
+    0: "NOT_RUNNING",
+    1: "NOT_SCALED",
+    2: "JOINT_TORQUE_LIMIT",
+    3: "JOINT_ACCEL_LIMIT",
+    4: "POWER_SUPPLY_LIMIT",
+    5: "MOMENTUM_LIMIT",
+    6: "STOPPING_TIME_LIMIT",
+    7: "STOPPING_DIST_LIMIT",
+    8: "TOOL_SPEED_LIMIT",
+    9: "ELBOW_SPEED_LIMIT",
+    10: "JOINT_SPEED_LIMIT",
+    11: "SMOOTH_SAFETY_TRANS",
+    12: "STOP_DIST_SAFETY_API",
+    13: "TOOL_WRENCH_LIMIT",
+    14: "EXT_AXIS_SPEED_LIMIT",
     15: "EXT_AXIS_STOPPING",
 }
 RUNTIME_STATE_MAP = {
-    0: "STOPPING", 1: "STOPPED", 2: "RUNNING",
-    3: "PAUSING",  4: "PAUSED",  5: "RESUMING",
+    0: "STOPPING",
+    1: "STOPPED",
+    2: "RUNNING",
+    3: "PAUSING",
+    4: "PAUSED",
+    5: "RESUMING",
 }
 SAFETY_BIT_LABELS = [
-    "normal_mode", "reduced_mode", "protective_stopped", "recovery_mode",
-    "safeguard_stopped", "sys_emergency_stopped", "robot_emergency_stopped",
-    "emergency_stopped", "violation", "fault", "stopped_due_to_safety",
+    "normal_mode",
+    "reduced_mode",
+    "protective_stopped",
+    "recovery_mode",
+    "safeguard_stopped",
+    "sys_emergency_stopped",
+    "robot_emergency_stopped",
+    "emergency_stopped",
+    "violation",
+    "fault",
+    "stopped_due_to_safety",
     "3pe_input_active",
 ]
 ROBOT_BIT_LABELS = [
-    "power_on", "program_running", "teach_button_pressed", "power_button_pressed",
+    "power_on",
+    "program_running",
+    "teach_button_pressed",
+    "power_button_pressed",
 ]
 
 HISTORY_LEN = 200
-CHART_LEN   = 60   # number of samples to plot — keep low to reduce browser render cost
+CHART_LEN = 60  # number of samples to plot — keep low to reduce browser render cost
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ROBOT GEOMETRY — UR5e DH PARAMETERS + CAMERA → ROBOT TRANSFORM
@@ -211,12 +266,12 @@ CHART_LEN   = 60   # number of samples to plot — keep low to reduce browser re
 # https://www.universal-robots.com/articles/ur/application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/
 UR5E_DH = [
     # (a,        alpha,    d,       theta_offset)
-    (0.0,        math.pi/2, 0.1625,  0.0),        # base → shoulder
-    (-0.425,     0.0,       0.0,     0.0),        # shoulder → elbow
-    (-0.3922,    0.0,       0.0,     0.0),        # elbow → wrist1
-    (0.0,        math.pi/2, 0.1333,  0.0),        # wrist1 → wrist2
-    (0.0,       -math.pi/2, 0.0997,  0.0),        # wrist2 → wrist3
-    (0.0,        0.0,       0.0996,  0.0),        # wrist3 → TCP flange
+    (0.0, math.pi / 2, 0.1625, 0.0),  # base → shoulder
+    (-0.425, 0.0, 0.0, 0.0),  # shoulder → elbow
+    (-0.3922, 0.0, 0.0, 0.0),  # elbow → wrist1
+    (0.0, math.pi / 2, 0.1333, 0.0),  # wrist1 → wrist2
+    (0.0, -math.pi / 2, 0.0997, 0.0),  # wrist2 → wrist3
+    (0.0, 0.0, 0.0996, 0.0),  # wrist3 → TCP flange
 ]
 
 # ── CAMERA POSE IN ROBOT BASE FRAME ──
@@ -228,16 +283,28 @@ UR5E_DH = [
 # Camera optical frame convention: +X right, +Y down, +Z forward (into scene).
 # So if the camera is aimed from the wall toward the robot, its +Z points
 # in the robot's -X direction.
-CAMERA_POS_IN_BASE     = (3.8, 0.0, 1.5)    # (x, y, z) meters in robot base frame
-CAMERA_LOOK_AT_IN_BASE = (0.0, 0.0, 0.3)    # point the camera is aimed at (table/robot center)
-CAMERA_ROLL_DEG        = 0.0                # roll around optical axis
+CAMERA_POS_IN_BASE = (3.8, 0.0, 1.5)  # (x, y, z) meters in robot base frame
+CAMERA_LOOK_AT_IN_BASE = (
+    0.0,
+    0.0,
+    0.3,
+)  # point the camera is aimed at (table/robot center)
+CAMERA_ROLL_DEG = 0.0  # roll around optical axis
 
 HISTORY_LEN_KIN = 200  # unused but kept for clarity
 
 
 def _mat_mul(A, B):
-    """4x4 matrix multiplication without numpy."""
-    R = [[0.0]*4 for _ in range(4)]
+    """Multiply two 4×4 matrices using pure Python (no NumPy).
+
+    Args:
+        A (list[list[float]]): 4×4 matrix as a list of 4 row lists.
+        B (list[list[float]]): 4×4 matrix as a list of 4 row lists.
+
+    Returns:
+        list[list[float]]: Resulting 4×4 matrix ``A @ B``.
+    """
+    R = [[0.0] * 4 for _ in range(4)]
     for i in range(4):
         for j in range(4):
             R[i][j] = sum(A[i][k] * B[k][j] for k in range(4))
@@ -245,21 +312,47 @@ def _mat_mul(A, B):
 
 
 def _dh_transform(a, alpha, d, theta):
-    """Build a 4x4 DH transform for one link."""
+    """Build a 4×4 homogeneous Denavit-Hartenberg transform matrix for one joint.
+
+    Implements the standard DH convention::
+
+        T = Rz(θ) · Tz(d) · Tx(a) · Rx(α)
+
+    Args:
+        a (float): Link length (metres) along the previous x-axis.
+        alpha (float): Link twist (radians) around the previous x-axis.
+        d (float): Joint offset (metres) along the current z-axis.
+        theta (float): Joint angle (radians) around the current z-axis.
+
+    Returns:
+        list[list[float]]: 4×4 homogeneous transformation matrix.
+    """
     ct, st = math.cos(theta), math.sin(theta)
     ca, sa = math.cos(alpha), math.sin(alpha)
     return [
-        [ct,    -st*ca,  st*sa,   a*ct],
-        [st,     ct*ca, -ct*sa,   a*st],
-        [0.0,    sa,     ca,      d],
-        [0.0,    0.0,    0.0,     1.0],
+        [ct, -st * ca, st * sa, a * ct],
+        [st, ct * ca, -ct * sa, a * st],
+        [0.0, sa, ca, d],
+        [0.0, 0.0, 0.0, 1.0],
     ]
 
 
 def forward_kinematics_ur5e(q):
-    """Return list of 7 (x, y, z) points in robot base frame:
-    [base, shoulder, elbow, wrist1, wrist2, wrist3, tcp_flange].
-    q: list of 6 joint angles in radians.
+    """Compute the 3-D positions of each UR5e joint frame in the robot base frame.
+
+    Applies the UR5e DH parameters (``UR5E_DH``) sequentially using
+    :func:`_dh_transform` and :func:`_mat_mul` to produce the origin of each
+    joint frame, starting from the robot base.
+
+    Args:
+        q (list[float]): Six joint angles in radians, ordered
+            [base, shoulder, elbow, wrist1, wrist2, wrist3].  If ``None`` or
+            not length 6, all points fall back to the origin.
+
+    Returns:
+        list[tuple[float, float, float]]: Seven ``(x, y, z)`` points in the
+            robot base frame: base origin, shoulder, elbow, wrist 1, wrist 2,
+            wrist 3, and TCP flange.
     """
     if q is None or len(q) != 6:
         # Fallback: all joints at origin
@@ -277,32 +370,59 @@ def forward_kinematics_ur5e(q):
 
 
 def _point_to_segment_distance(p, a, b):
-    """Distance from point p to line segment ab (all 3D tuples)."""
+    """Compute the Euclidean distance from a 3-D point to a 3-D line segment.
+
+    Projects *p* onto the infinite line through *a* and *b*, clamps the
+    parameter to ``[0, 1]`` to stay within the segment, then returns the
+    distance from *p* to that nearest point on the segment.
+
+    Args:
+        p (tuple[float, float, float]): Query point ``(x, y, z)``.
+        a (tuple[float, float, float]): Segment start ``(x, y, z)``.
+        b (tuple[float, float, float]): Segment end ``(x, y, z)``.
+
+    Returns:
+        float: Minimum distance in metres from *p* to segment *ab*.
+    """
     ax, ay, az = a
     bx, by, bz = b
     px, py, pz = p
     dx, dy, dz = bx - ax, by - ay, bz - az
-    seg_len_sq = dx*dx + dy*dy + dz*dz
+    seg_len_sq = dx * dx + dy * dy + dz * dz
     if seg_len_sq < 1e-9:
         ex, ey, ez = px - ax, py - ay, pz - az
-        return math.sqrt(ex*ex + ey*ey + ez*ez)
+        return math.sqrt(ex * ex + ey * ey + ez * ez)
     t = ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / seg_len_sq
     t = max(0.0, min(1.0, t))
-    cx, cy, cz = ax + t*dx, ay + t*dy, az + t*dz
+    cx, cy, cz = ax + t * dx, ay + t * dy, az + t * dz
     ex, ey, ez = px - cx, py - cy, pz - cz
-    return math.sqrt(ex*ex + ey*ey + ez*ez)
+    return math.sqrt(ex * ex + ey * ey + ez * ez)
 
 
 def nearest_link_distance(person_xyz_base, joint_points):
-    """Minimum distance from a point to any robot link segment.
-    person_xyz_base: (x, y, z) in robot base frame.
-    joint_points: list of 7 (x, y, z) points from forward_kinematics_ur5e.
-    Returns (min_distance, index_of_nearest_link).
+    """Find the minimum distance from a 3-D point to any segment of the robot arm.
+
+    Iterates over all consecutive pairs in *joint_points* (each pair
+    representing one robot link) and calls :func:`_point_to_segment_distance`
+    to find the closest link.
+
+    Args:
+        person_xyz_base (tuple[float, float, float]): Position of the person
+            (or object) in the robot base frame, in metres.
+        joint_points (list[tuple[float, float, float]]): Seven joint-frame
+            origins as returned by :func:`forward_kinematics_ur5e`.
+
+    Returns:
+        tuple[float, int]: ``(min_distance, link_index)`` where *min_distance*
+            is in metres and *link_index* is the 0-based index of the nearest
+            link segment (0 = base–shoulder, …, 5 = wrist3–TCP).
     """
     min_d = float("inf")
     min_i = -1
     for i in range(len(joint_points) - 1):
-        d = _point_to_segment_distance(person_xyz_base, joint_points[i], joint_points[i+1])
+        d = _point_to_segment_distance(
+            person_xyz_base, joint_points[i], joint_points[i + 1]
+        )
         if d < min_d:
             min_d = d
             min_i = i
@@ -310,44 +430,57 @@ def nearest_link_distance(person_xyz_base, joint_points):
 
 
 def _build_camera_to_base_transform(cam_pos, look_at, roll_deg=0.0):
-    """Build a 4x4 transform from camera optical frame to robot base frame.
+    """Build a 4×4 homogeneous transform from the camera optical frame to the robot base frame.
 
-    Camera optical: +X right, +Y down, +Z forward.
-    Robot base: +X forward, +Y left, +Z up.
+    Constructs an orthonormal camera orientation from a look-at direction and
+    a world-up hint, then applies an optional roll around the optical axis.
+    Camera optical convention: +X right, +Y down, +Z forward into scene.
+    Robot base convention: +X forward, +Y left, +Z up.
 
-    The camera is positioned at cam_pos and aimed at look_at, both in base frame.
+    Args:
+        cam_pos (tuple[float, float, float]): Camera position ``(x, y, z)``
+            in the robot base frame, in metres.
+        look_at (tuple[float, float, float]): World-space point the camera is
+            aimed at, in the robot base frame.
+        roll_deg (float): Roll angle (degrees) around the optical axis (+Z).
+            Defaults to ``0.0``.
+
+    Returns:
+        list[list[float]]: 4×4 homogeneous transformation matrix
+            ``T_camera_to_base`` mapping camera-frame points to robot-base
+            frame points.
     """
     # Camera +Z direction (from camera toward scene) in base frame
     fx = look_at[0] - cam_pos[0]
     fy = look_at[1] - cam_pos[1]
     fz = look_at[2] - cam_pos[2]
-    fn = math.sqrt(fx*fx + fy*fy + fz*fz)
+    fn = math.sqrt(fx * fx + fy * fy + fz * fz)
     if fn < 1e-9:
         fx, fy, fz = 1.0, 0.0, 0.0
         fn = 1.0
-    zx, zy, zz = fx/fn, fy/fn, fz/fn
+    zx, zy, zz = fx / fn, fy / fn, fz / fn
 
     # Camera +Y (down in image) — project world -Z onto plane perp to Z axis
     wx, wy, wz = 0.0, 0.0, -1.0
-    dot = wx*zx + wy*zy + wz*zz
-    yx, yy, yz = wx - dot*zx, wy - dot*zy, wz - dot*zz
-    yn = math.sqrt(yx*yx + yy*yy + yz*yz)
+    dot = wx * zx + wy * zy + wz * zz
+    yx, yy, yz = wx - dot * zx, wy - dot * zy, wz - dot * zz
+    yn = math.sqrt(yx * yx + yy * yy + yz * yz)
     if yn < 1e-9:
         # Camera looking straight up or down — pick arbitrary Y
         yx, yy, yz = 0.0, 1.0, 0.0
         yn = 1.0
-    yx, yy, yz = yx/yn, yy/yn, yz/yn
+    yx, yy, yz = yx / yn, yy / yn, yz / yn
 
     # Camera +X = Y cross Z
-    xx = yy*zz - yz*zy
-    xy = yz*zx - yx*zz
-    xz = yx*zy - yy*zx
+    xx = yy * zz - yz * zy
+    xy = yz * zx - yx * zz
+    xz = yx * zy - yy * zx
 
     # Apply roll around optical axis (Z)
     if abs(roll_deg) > 1e-6:
         cr, sr = math.cos(math.radians(roll_deg)), math.sin(math.radians(roll_deg))
-        nxx, nxy, nxz = xx*cr + yx*sr, xy*cr + yy*sr, xz*cr + yz*sr
-        nyx, nyy, nyz = -xx*sr + yx*cr, -xy*sr + yy*cr, -xz*sr + yz*cr
+        nxx, nxy, nxz = xx * cr + yx * sr, xy * cr + yy * sr, xz * cr + yz * sr
+        nyx, nyy, nyz = -xx * sr + yx * cr, -xy * sr + yy * cr, -xz * sr + yz * cr
         xx, xy, xz = nxx, nxy, nxz
         yx, yy, yz = nyx, nyy, nyz
 
@@ -366,10 +499,25 @@ T_CAMERA_TO_BASE = _build_camera_to_base_transform(
 
 
 def camera_pixel_to_base(px, py, depth_m, intrinsics):
-    """Convert a pixel + depth from the camera into a point in the robot base frame.
+    """Back-project a depth-image pixel to 3-D coordinates in the robot base frame.
 
-    intrinsics: dict with fx, fy, cx, cy (RealSense color intrinsics).
-    Returns (x, y, z) in robot base frame, or None if depth invalid.
+    Unprojects ``(px, py)`` through the pinhole camera model using *intrinsics*
+    to get a point in the camera optical frame, then applies the precomputed
+    module-level ``T_CAMERA_TO_BASE`` transform to express it in robot base
+    coordinates.
+
+    Args:
+        px (float): Pixel column (horizontal) in the colour image.
+        py (float): Pixel row (vertical) in the colour image.
+        depth_m (float): Measured depth at ``(px, py)`` in metres.  Values
+            ``<= 0`` or ``> 10`` are considered invalid and return ``None``.
+        intrinsics (dict): Camera intrinsic parameters with keys
+            ``"fx"``, ``"fy"``, ``"cx"``, ``"cy"`` (focal lengths and principal
+            point in pixels).
+
+    Returns:
+        tuple[float, float, float] | None: ``(x, y, z)`` in the robot base
+            frame (metres), or ``None`` if *depth_m* is invalid.
     """
     if depth_m is None or depth_m <= 0 or depth_m > 10:
         return None
@@ -383,9 +531,9 @@ def camera_pixel_to_base(px, py, depth_m, intrinsics):
     Z = depth_m
     # Apply camera → base transform
     T = T_CAMERA_TO_BASE
-    xb = T[0][0]*X + T[0][1]*Y + T[0][2]*Z + T[0][3]
-    yb = T[1][0]*X + T[1][1]*Y + T[1][2]*Z + T[1][3]
-    zb = T[2][0]*X + T[2][1]*Y + T[2][2]*Z + T[2][3]
+    xb = T[0][0] * X + T[0][1] * Y + T[0][2] * Z + T[0][3]
+    yb = T[1][0] * X + T[1][1] * Y + T[1][2] * Z + T[1][3]
+    zb = T[2][0] * X + T[2][1] * Y + T[2][2] * Z + T[2][3]
     return (xb, yb, zb)
 
 
@@ -393,7 +541,22 @@ def camera_pixel_to_base(px, py, depth_m, intrinsics):
 #  HELPER UTILITIES
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def safe_get(obj, method_name, fallback=None):
+    """Call a zero-argument method on *obj* and return its value, swallowing any error.
+
+    Used to call ur_rtde getter methods that may not exist on older firmware or
+    may raise exceptions when the robot is not in the expected state.
+
+    Args:
+        obj: Object to call the method on (typically an RTDE interface).
+        method_name (str): Name of the zero-argument method to call.
+        fallback: Value returned when the attribute does not exist or the call
+            raises any exception.  Defaults to ``None``.
+
+    Returns:
+        Any: Return value of ``obj.<method_name>()`` or *fallback*.
+    """
     fn = getattr(obj, method_name, None)
     if fn is None:
         return fallback
@@ -402,20 +565,72 @@ def safe_get(obj, method_name, fallback=None):
     except Exception:
         return fallback
 
+
 def unpack_bits(bitmask, labels):
+    """Unpack an integer bitmask into a labelled dict of per-bit integer values.
+
+    Args:
+        bitmask (int | None): Integer whose bits represent individual flags.
+            If ``None``, all labels map to ``None``.
+        labels (list[str]): Ordered label names, where index ``i`` corresponds
+            to bit ``i`` (LSB = index 0).
+
+    Returns:
+        dict[str, int | None]: Mapping of label to ``0`` or ``1``, or to
+            ``None`` if *bitmask* is ``None``.
+    """
     if bitmask is None:
         return {lbl: None for lbl in labels}
     return {lbl: int((bitmask >> i) & 1) for i, lbl in enumerate(labels)}
 
+
 def vec_to_dict(vec, keys):
+    """Zip a sequence of numeric values with a list of key names into a dict.
+
+    Args:
+        vec (list[float] | None): Numeric values to pair with *keys*.
+            If ``None``, all keys map to ``None``.
+        keys (list[str]): Key names in the same order as *vec* elements.
+
+    Returns:
+        dict[str, float | None]: Mapping of each key to its rounded float
+            value (6 decimal places), or to ``None`` if *vec* is ``None``.
+    """
     if vec is None:
         return {k: None for k in keys}
     return {k: round(float(v), 6) for k, v in zip(keys, vec)}
 
+
 def scalar(v, n=6):
+    """Round a scalar value to *n* decimal places, returning ``None`` for ``None`` input.
+
+    Args:
+        v (float | None): Value to round.
+        n (int): Number of decimal places.  Defaults to ``6``.
+
+    Returns:
+        float | None: Rounded float, or ``None`` if *v* is ``None``.
+    """
     return round(float(v), n) if v is not None else None
 
+
 def flatten_dict(d, parent_key="", sep="__"):
+    """Recursively flatten a nested dict by joining key paths with *sep*.
+
+    Leaves non-dict values in place.  Useful for converting the hierarchical
+    ``collect_sample`` output to a single-level row for CSV logging.
+
+    Args:
+        d (dict): Dict to flatten, potentially containing nested dicts.
+        parent_key (str): Prefix to prepend to every key at this level.
+            Defaults to ``""`` (no prefix for top-level keys).
+        sep (str): Separator inserted between key levels.  Defaults to
+            ``"__"``.
+
+    Returns:
+        dict: Flat dict where nested keys are joined by *sep*, e.g.
+            ``{"joints__base__actual_position_rad": 0.123}``.
+    """
     items = {}
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -425,9 +640,11 @@ def flatten_dict(d, parent_key="", sep="__"):
             items[new_key] = v
     return items
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ROBOT INTERFACE
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class RobotInterface:
     """Wraps all ur_rtde interfaces for telemetry and control."""
@@ -501,82 +718,130 @@ class RobotInterface:
             "sample_index": idx,
             "elapsed_time_s": round(elapsed, 6),
             "wall_clock_iso": datetime.now().isoformat(timespec="milliseconds"),
-            "controller_timestamp_s":    scalar(safe_get(con, "getTimestamp")),
-            "actual_execution_time_ms":  scalar(safe_get(con, "getActualExecutionTime")),
+            "controller_timestamp_s": scalar(safe_get(con, "getTimestamp")),
+            "actual_execution_time_ms": scalar(safe_get(con, "getActualExecutionTime")),
         }
 
         # 2. Joints — all methods below use RTDEReceiveInterface only
         joints = {
-            "actual_position_rad":         vec_to_dict(safe_get(con, "getActualQ"), JOINT_NAMES),
-            "actual_velocity_rad_s":       vec_to_dict(safe_get(con, "getActualQd"), JOINT_NAMES),
-            "actual_current_A":            vec_to_dict(safe_get(con, "getActualCurrent"), JOINT_NAMES),
-            "actual_current_as_torque_Nm": vec_to_dict(safe_get(con, "getActualCurrentAsTorque"), JOINT_NAMES),
-            "actual_voltage_V":            vec_to_dict(safe_get(con, "getActualJointVoltage"), JOINT_NAMES),
-            "temperature_C":               vec_to_dict(safe_get(con, "getJointTemperatures"), JOINT_NAMES),
-            "joint_mode":                  vec_to_dict(safe_get(con, "getJointMode"), JOINT_NAMES),
-            "control_output":              vec_to_dict(safe_get(con, "getJointControlOutput"), JOINT_NAMES),
-            "target_position_rad":         vec_to_dict(safe_get(con, "getTargetQ"), JOINT_NAMES),
-            "target_velocity_rad_s":       vec_to_dict(safe_get(con, "getTargetQd"), JOINT_NAMES),
-            "target_accel_rad_s2":         vec_to_dict(safe_get(con, "getTargetQdd"), JOINT_NAMES),
-            "target_current_A":            vec_to_dict(safe_get(con, "getTargetCurrent"), JOINT_NAMES),
-            "target_moment_Nm":            vec_to_dict(safe_get(con, "getTargetMoment"), JOINT_NAMES),
-            "joint_torques_Nm":            vec_to_dict(None, JOINT_NAMES),
+            "actual_position_rad": vec_to_dict(
+                safe_get(con, "getActualQ"), JOINT_NAMES
+            ),
+            "actual_velocity_rad_s": vec_to_dict(
+                safe_get(con, "getActualQd"), JOINT_NAMES
+            ),
+            "actual_current_A": vec_to_dict(
+                safe_get(con, "getActualCurrent"), JOINT_NAMES
+            ),
+            "actual_current_as_torque_Nm": vec_to_dict(
+                safe_get(con, "getActualCurrentAsTorque"), JOINT_NAMES
+            ),
+            "actual_voltage_V": vec_to_dict(
+                safe_get(con, "getActualJointVoltage"), JOINT_NAMES
+            ),
+            "temperature_C": vec_to_dict(
+                safe_get(con, "getJointTemperatures"), JOINT_NAMES
+            ),
+            "joint_mode": vec_to_dict(safe_get(con, "getJointMode"), JOINT_NAMES),
+            "control_output": vec_to_dict(
+                safe_get(con, "getJointControlOutput"), JOINT_NAMES
+            ),
+            "target_position_rad": vec_to_dict(
+                safe_get(con, "getTargetQ"), JOINT_NAMES
+            ),
+            "target_velocity_rad_s": vec_to_dict(
+                safe_get(con, "getTargetQd"), JOINT_NAMES
+            ),
+            "target_accel_rad_s2": vec_to_dict(
+                safe_get(con, "getTargetQdd"), JOINT_NAMES
+            ),
+            "target_current_A": vec_to_dict(
+                safe_get(con, "getTargetCurrent"), JOINT_NAMES
+            ),
+            "target_moment_Nm": vec_to_dict(
+                safe_get(con, "getTargetMoment"), JOINT_NAMES
+            ),
+            "joint_torques_Nm": vec_to_dict(None, JOINT_NAMES),
         }
 
         # 3. TCP / Cartesian — RTDEReceiveInterface only
         tcp = {
-            "actual_pose_m_rad":   vec_to_dict(safe_get(con, "getActualTCPPose"), CART_AXES),
-            "actual_speed_m_s":    vec_to_dict(safe_get(con, "getActualTCPSpeed"), CART_AXES),
-            "actual_force_N_Nm":   vec_to_dict(safe_get(con, "getActualTCPForce"), FORCE_AXES),
-            "target_pose_m_rad":   vec_to_dict(safe_get(con, "getTargetTCPPose"), CART_AXES),
-            "target_speed_m_s":    vec_to_dict(safe_get(con, "getTargetTCPSpeed"), CART_AXES),
-            "tcp_offset_m_rad":    vec_to_dict(None, CART_AXES),
-            "ft_raw_wrench_N_Nm":  vec_to_dict(safe_get(con, "getFtRawWrench"), FORCE_AXES),
+            "actual_pose_m_rad": vec_to_dict(
+                safe_get(con, "getActualTCPPose"), CART_AXES
+            ),
+            "actual_speed_m_s": vec_to_dict(
+                safe_get(con, "getActualTCPSpeed"), CART_AXES
+            ),
+            "actual_force_N_Nm": vec_to_dict(
+                safe_get(con, "getActualTCPForce"), FORCE_AXES
+            ),
+            "target_pose_m_rad": vec_to_dict(
+                safe_get(con, "getTargetTCPPose"), CART_AXES
+            ),
+            "target_speed_m_s": vec_to_dict(
+                safe_get(con, "getTargetTCPSpeed"), CART_AXES
+            ),
+            "tcp_offset_m_rad": vec_to_dict(None, CART_AXES),
+            "ft_raw_wrench_N_Nm": vec_to_dict(
+                safe_get(con, "getFtRawWrench"), FORCE_AXES
+            ),
         }
 
         # 4. Tool Accelerometer
         ta_raw = safe_get(con, "getActualToolAccelerometer")
-        tool_accel = vec_to_dict(ta_raw, ["ax", "ay", "az"]) if ta_raw else {"ax": None, "ay": None, "az": None}
+        tool_accel = (
+            vec_to_dict(ta_raw, ["ax", "ay", "az"])
+            if ta_raw
+            else {"ax": None, "ay": None, "az": None}
+        )
 
         # 5. Analog I/O (only the four that ur_rtde exposes as getters)
         analog_io = {
-            "standard_analog_input_0":  scalar(safe_get(con, "getStandardAnalogInput0")),
-            "standard_analog_input_1":  scalar(safe_get(con, "getStandardAnalogInput1")),
-            "standard_analog_output_0": scalar(safe_get(con, "getStandardAnalogOutput0")),
-            "standard_analog_output_1": scalar(safe_get(con, "getStandardAnalogOutput1")),
+            "standard_analog_input_0": scalar(safe_get(con, "getStandardAnalogInput0")),
+            "standard_analog_input_1": scalar(safe_get(con, "getStandardAnalogInput1")),
+            "standard_analog_output_0": scalar(
+                safe_get(con, "getStandardAnalogOutput0")
+            ),
+            "standard_analog_output_1": scalar(
+                safe_get(con, "getStandardAnalogOutput1")
+            ),
         }
 
         # 6. Digital I/O (only the two bitmasks ur_rtde exposes)
         di_bits = safe_get(con, "getActualDigitalInputBits")
         do_bits = safe_get(con, "getActualDigitalOutputBits")
         digital_io = {
-            "digital_inputs":      unpack_bits(di_bits, DIGITAL_INPUT_LABELS),
-            "digital_outputs":     unpack_bits(do_bits, DIGITAL_OUTPUT_LABELS),
-            "digital_inputs_raw":  di_bits,
+            "digital_inputs": unpack_bits(di_bits, DIGITAL_INPUT_LABELS),
+            "digital_outputs": unpack_bits(do_bits, DIGITAL_OUTPUT_LABELS),
+            "digital_inputs_raw": di_bits,
             "digital_outputs_raw": do_bits,
         }
 
         # 7. Power
         power = {
-            "main_voltage_V":            scalar(safe_get(con, "getActualMainVoltage")),
-            "robot_voltage_48V":         scalar(safe_get(con, "getActualRobotVoltage")),
-            "robot_current_A":           scalar(safe_get(con, "getActualRobotCurrent")),
+            "main_voltage_V": scalar(safe_get(con, "getActualMainVoltage")),
+            "robot_voltage_48V": scalar(safe_get(con, "getActualRobotVoltage")),
+            "robot_current_A": scalar(safe_get(con, "getActualRobotCurrent")),
             "cartesian_momentum_kg_m_s": scalar(safe_get(con, "getActualMomentum")),
         }
 
         # 8. Motion Scaling
         motion = {
-            "speed_scaling_factor":   scalar(safe_get(con, "getSpeedScaling")),
-            "target_speed_fraction":  scalar(safe_get(con, "getTargetSpeedFraction")),
+            "speed_scaling_factor": scalar(safe_get(con, "getSpeedScaling")),
+            "target_speed_fraction": scalar(safe_get(con, "getTargetSpeedFraction")),
             "speed_scaling_combined": scalar(safe_get(con, "getSpeedScalingCombined")),
         }
 
         # 9. Payload
         payload = {
-            "mass_kg":              scalar(safe_get(con, "getPayload")),
-            "center_of_gravity":    vec_to_dict(safe_get(con, "getPayloadCog"), ["x", "y", "z"]),
-            "inertia_matrix_kg_m2": vec_to_dict(safe_get(con, "getPayloadInertia"),
-                                                ["Ixx", "Iyy", "Izz", "Ixy", "Ixz", "Iyz"]),
+            "mass_kg": scalar(safe_get(con, "getPayload")),
+            "center_of_gravity": vec_to_dict(
+                safe_get(con, "getPayloadCog"), ["x", "y", "z"]
+            ),
+            "inertia_matrix_kg_m2": vec_to_dict(
+                safe_get(con, "getPayloadInertia"),
+                ["Ixx", "Iyy", "Izz", "Ixy", "Ixz", "Iyz"],
+            ),
         }
 
         # 10. Robot & Safety Status
@@ -588,11 +853,11 @@ class RobotInterface:
         #   IS_RECOVERY_MODE, IS_SAFEGUARD_STOPPED, IS_SYSTEM_EMERGENCY_STOPPED,
         #   IS_ROBOT_EMERGENCY_STOPPED, IS_EMERGENCY_STOPPED, IS_VIOLATION,
         #   IS_FAULT, IS_STOPPED_DUE_TO_SAFETY).
-        robot_mode_val  = safe_get(con, "getRobotMode")
+        robot_mode_val = safe_get(con, "getRobotMode")
         safety_mode_val = safe_get(con, "getSafetyMode")
         safety_bits_val = safe_get(con, "getSafetyStatusBits")
         robot_status_val = safe_get(con, "getRobotStatus")
-        runtime_val     = safe_get(con, "getRuntimeState")
+        runtime_val = safe_get(con, "getRuntimeState")
 
         # Determine safety status from the safety bits (highest-priority bit set wins)
         safety_status_desc = "UNKNOWN"
@@ -621,19 +886,19 @@ class RobotInterface:
                 safety_status_desc = "NORMAL"
 
         status = {
-            "robot_mode_code":        robot_mode_val,
-            "robot_mode_desc":        ROBOT_MODE_MAP.get(robot_mode_val, "UNKNOWN"),
-            "safety_mode_code":       safety_mode_val,
-            "safety_mode_desc":       SAFETY_MODE_MAP.get(safety_mode_val, "UNKNOWN"),
-            "safety_status_code":     safety_bits_val,
-            "safety_status_desc":     safety_status_desc,
-            "safety_status_bits":     unpack_bits(safety_bits_val, SAFETY_BIT_LABELS),
-            "robot_status_bits":      unpack_bits(robot_status_val, ROBOT_BIT_LABELS),
-            "robot_status_raw":       robot_status_val,
-            "runtime_state_code":     runtime_val,
-            "runtime_state_desc":     RUNTIME_STATE_MAP.get(runtime_val, "UNKNOWN"),
-            "is_protective_stopped":  safe_get(con, "isProtectiveStopped"),
-            "is_emergency_stopped":   safe_get(con, "isEmergencyStopped"),
+            "robot_mode_code": robot_mode_val,
+            "robot_mode_desc": ROBOT_MODE_MAP.get(robot_mode_val, "UNKNOWN"),
+            "safety_mode_code": safety_mode_val,
+            "safety_mode_desc": SAFETY_MODE_MAP.get(safety_mode_val, "UNKNOWN"),
+            "safety_status_code": safety_bits_val,
+            "safety_status_desc": safety_status_desc,
+            "safety_status_bits": unpack_bits(safety_bits_val, SAFETY_BIT_LABELS),
+            "robot_status_bits": unpack_bits(robot_status_val, ROBOT_BIT_LABELS),
+            "robot_status_raw": robot_status_val,
+            "runtime_state_code": runtime_val,
+            "runtime_state_desc": RUNTIME_STATE_MAP.get(runtime_val, "UNKNOWN"),
+            "is_protective_stopped": safe_get(con, "isProtectiveStopped"),
+            "is_emergency_stopped": safe_get(con, "isEmergencyStopped"),
         }
 
         return {
@@ -654,9 +919,13 @@ class RobotInterface:
             return {"status": "error", "message": "Not connected to robot"}
         try:
             if command == "moveJ":
-                self.rtde_c.moveJ(params["target"], params["speed"], params["acceleration"])
+                self.rtde_c.moveJ(
+                    params["target"], params["speed"], params["acceleration"]
+                )
             elif command == "moveL":
-                self.rtde_c.moveL(params["target"], params["speed"], params["acceleration"])
+                self.rtde_c.moveL(
+                    params["target"], params["speed"], params["acceleration"]
+                )
             elif command == "jogStart":
                 # jogStart(speeds, feature=FEATURE_BASE (0), acc=0.5, custom_frame={})
                 feature = params.get("feature", 0)  # 0=base, 1=tool, 2=custom
@@ -666,7 +935,9 @@ class RobotInterface:
             elif command == "stopJ":
                 self.rtde_c.stopJ(params.get("acceleration", 2.0))
             elif command == "stopL":
-                self.rtde_c.stopL(params.get("deceleration", 10.0), params.get("asynchronous", True))
+                self.rtde_c.stopL(
+                    params.get("deceleration", 10.0), params.get("asynchronous", True)
+                )
             elif command == "stopScript":
                 self.rtde_c.stopScript()
             elif command == "freedriveMode":
@@ -684,7 +955,9 @@ class RobotInterface:
             elif command == "setStandardDigitalOut":
                 self.rtde_io_iface.setStandardDigitalOut(params["id"], params["level"])
             elif command == "setConfigurableDigitalOut":
-                self.rtde_io_iface.setConfigurableDigitalOut(params["id"], params["level"])
+                self.rtde_io_iface.setConfigurableDigitalOut(
+                    params["id"], params["level"]
+                )
             elif command == "setToolDigitalOut":
                 self.rtde_io_iface.setToolDigitalOut(params["id"], params["level"])
             elif command == "setSpeedSlider":
@@ -703,9 +976,7 @@ class RobotInterface:
                 self.dash.restartSafety()
             elif command == "activateGripper":
                 self.rtde_c.sendCustomScript(
-                    "def activate_gripper():\n"
-                    "  rq_activate_and_wait()\n"
-                    "end\n"
+                    "def activate_gripper():\n  rq_activate_and_wait()\nend\n"
                 )
             elif command == "loadProgram":
                 program = params.get("program", "")
@@ -725,6 +996,7 @@ class RobotInterface:
             log.error(f"Command '{command}' failed: {e}")
             return {"status": "error", "message": str(e)}
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  REALSENSE CAPTURE
 # ══════════════════════════════════════════════════════════════════════════════
@@ -732,6 +1004,7 @@ class RobotInterface:
 # ══════════════════════════════════════════════════════════════════════════════
 #  SAFETY MONITOR — Person Detection + Hand Gestures + Depth Zone
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class SafetyMonitor:
     """Processes frames for person detection, hand gestures, and depth-based safety zones.
@@ -741,13 +1014,18 @@ class SafetyMonitor:
     """
 
     # Safety zone colors
-    COLOR_SAFE    = (0, 200, 0)    # Green
+    COLOR_SAFE = (0, 200, 0)  # Green
     COLOR_WARNING = (0, 180, 255)  # Orange
-    COLOR_DANGER  = (0, 0, 220)    # Red
-    COLOR_TEXT    = (255, 255, 255) # White
+    COLOR_DANGER = (0, 0, 220)  # Red
+    COLOR_TEXT = (255, 255, 255)  # White
 
-    def __init__(self, safety_radius: float = 1.5, warning_radius: float = 2.5,
-                 confidence_threshold: float = 0.55, model_path: Optional[str] = None):
+    def __init__(
+        self,
+        safety_radius: float = 1.5,
+        warning_radius: float = 2.5,
+        confidence_threshold: float = 0.55,
+        model_path: Optional[str] = None,
+    ):
         self.safety_radius = safety_radius
         self.warning_radius = warning_radius
         self.confidence_threshold = confidence_threshold
@@ -755,8 +1033,10 @@ class SafetyMonitor:
         # State
         self.persons_detected: List[Dict] = []
         self.person_in_zone = False
-        self.closest_distance = float("inf")      # distance from nearest robot link (base frame)
-        self.closest_link_index = -1              # which link is closest (0=base..5=wrist3)
+        self.closest_distance = float(
+            "inf"
+        )  # distance from nearest robot link (base frame)
+        self.closest_link_index = -1  # which link is closest (0=base..5=wrist3)
         self.gesture = None  # "stop", "resume", or None
         self.safety_status = "CLEAR"  # "CLEAR", "WARNING", "DANGER"
         self.robot_paused_by_safety = False
@@ -770,7 +1050,9 @@ class SafetyMonitor:
         self.latest_joint_points = forward_kinematics_ur5e(self.latest_q)
 
         # Gesture latch: stop gesture latches ON until a resume gesture is seen
-        self.gesture_hold_stop = False    # True = stop gesture was seen, robot must stay stopped
+        self.gesture_hold_stop = (
+            False  # True = stop gesture was seen, robot must stay stopped
+        )
         self.gesture_hold_resume = False  # True = resume gesture was seen this frame
 
         # OpenVINO person detection
@@ -791,12 +1073,16 @@ class SafetyMonitor:
         if HAS_MEDIAPIPE:
             self._init_mediapipe()
 
-        log.info(f"SafetyMonitor: person_detect={'ON' if self.ov_model else 'OFF'}, "
-                 f"yolo={'ON' if self.yolo_model else 'OFF'}, "
-                 f"hand_gesture={'ON' if self.mp_hands else 'OFF'}, "
-                 f"safety_radius={safety_radius}m, warning_radius={warning_radius}m")
-        log.info(f"SafetyMonitor: camera at {CAMERA_POS_IN_BASE} in robot base frame, "
-                 f"aimed at {CAMERA_LOOK_AT_IN_BASE}")
+        log.info(
+            f"SafetyMonitor: person_detect={'ON' if self.ov_model else 'OFF'}, "
+            f"yolo={'ON' if self.yolo_model else 'OFF'}, "
+            f"hand_gesture={'ON' if self.mp_hands else 'OFF'}, "
+            f"safety_radius={safety_radius}m, warning_radius={warning_radius}m"
+        )
+        log.info(
+            f"SafetyMonitor: camera at {CAMERA_POS_IN_BASE} in robot base frame, "
+            f"aimed at {CAMERA_LOOK_AT_IN_BASE}"
+        )
 
     def update_joint_state(self, q: Optional[List[float]]):
         """Called by the telemetry loop with the latest joint angles.
@@ -812,7 +1098,9 @@ class SafetyMonitor:
             model_path,
             "intel/person-detection-retail-0013/FP16/person-detection-retail-0013.xml",
             "person-detection-retail-0013.xml",
-            os.path.join(os.path.dirname(__file__), "models", "person-detection-retail-0013.xml"),
+            os.path.join(
+                os.path.dirname(__file__), "models", "person-detection-retail-0013.xml"
+            ),
         ]
         xml_path = None
         for p in search_paths:
@@ -821,8 +1109,12 @@ class SafetyMonitor:
                 break
 
         if xml_path is None:
-            log.warning("SafetyMonitor: OpenVINO model not found. Person detection disabled.")
-            log.warning("  Download with: omz_downloader --name person-detection-retail-0013")
+            log.warning(
+                "SafetyMonitor: OpenVINO model not found. Person detection disabled."
+            )
+            log.warning(
+                "  Download with: omz_downloader --name person-detection-retail-0013"
+            )
             return
 
         try:
@@ -832,8 +1124,10 @@ class SafetyMonitor:
             self.ov_input_layer = self.ov_compiled.input(0)
             self.ov_output_layer = self.ov_compiled.output(0)
             _, _, self.ov_h, self.ov_w = self.ov_input_layer.shape
-            log.info(f"SafetyMonitor: OpenVINO model loaded from {xml_path} "
-                     f"(input: {self.ov_w}x{self.ov_h})")
+            log.info(
+                f"SafetyMonitor: OpenVINO model loaded from {xml_path} "
+                f"(input: {self.ov_w}x{self.ov_h})"
+            )
             self.ov_model = True
         except Exception as e:
             log.error(f"SafetyMonitor: Failed to load OpenVINO model: {e}")
@@ -855,6 +1149,7 @@ class SafetyMonitor:
                     break
         try:
             from ultralytics import YOLO
+
             self.yolo_model = YOLO(yolo_path)
             log.info(f"SafetyMonitor: YOLO model loaded from {yolo_path}")
         except Exception as e:
@@ -871,7 +1166,12 @@ class SafetyMonitor:
             self._yolo_cache = []
             for box in results.boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
-                x1, y1, x2, y2 = int(x1 * inv_scale), int(y1 * inv_scale), int(x2 * inv_scale), int(y2 * inv_scale)
+                x1, y1, x2, y2 = (
+                    int(x1 * inv_scale),
+                    int(y1 * inv_scale),
+                    int(x2 * inv_scale),
+                    int(y2 * inv_scale),
+                )
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
                 label = results.names.get(cls_id, f"cls{cls_id}")
@@ -883,23 +1183,41 @@ class SafetyMonitor:
 
     def _draw_yolo(self, color_img, h, w):
         """Draw cached YOLO detections onto a frame."""
-        cache = getattr(self, '_yolo_cache', [])
-        for (x1, y1, x2, y2, label, conf) in cache:
+        cache = getattr(self, "_yolo_cache", [])
+        for x1, y1, x2, y2, label, conf in cache:
             color = (0, 255, 128)
             cv2.rectangle(color_img, (x1, y1), (x2, y2), color, 2)
             text = f"{label} {conf:.0%}"
             (tw, th_t), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
-            cv2.rectangle(color_img, (x1, y1 - th_t - 12), (x1 + tw + 10, y1), color, -1)
-            cv2.putText(color_img, text, (x1 + 5, y1 - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 2, cv2.LINE_AA)
-        cv2.putText(color_img, f"YOLO: {len(cache)} obj", (10, h - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 128), 2, cv2.LINE_AA)
+            cv2.rectangle(
+                color_img, (x1, y1 - th_t - 12), (x1 + tw + 10, y1), color, -1
+            )
+            cv2.putText(
+                color_img,
+                text,
+                (x1 + 5, y1 - 6),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (0, 0, 0),
+                2,
+                cv2.LINE_AA,
+            )
+        cv2.putText(
+            color_img,
+            f"YOLO: {len(cache)} obj",
+            (10, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 128),
+            2,
+            cv2.LINE_AA,
+        )
 
     def _init_mediapipe(self):
         """Initialize MediaPipe hand detection. Handles both legacy and new API."""
         try:
             # Try legacy API first (mp.solutions.hands)
-            if hasattr(mp, 'solutions'):
+            if hasattr(mp, "solutions"):
                 self.mp_hands_module = mp.solutions.hands
                 self.mp_drawing = mp.solutions.drawing_utils
                 self.mp_hands = self.mp_hands_module.Hands(
@@ -912,14 +1230,20 @@ class SafetyMonitor:
                 log.info("SafetyMonitor: MediaPipe Hands initialized (legacy API)")
             else:
                 # New API (mediapipe >= 0.10.21 task-based)
-                from mediapipe.tasks.python import vision as mp_vision
+                import os
+                import ssl
+                import tempfile
+                import urllib.request
+
                 from mediapipe.tasks.python import BaseOptions
-                import urllib.request, ssl, tempfile, os
+                from mediapipe.tasks.python import vision as mp_vision
 
                 # Download hand landmarker model if needed
                 model_path = os.path.join(tempfile.gettempdir(), "hand_landmarker.task")
                 if not os.path.exists(model_path):
-                    log.info("SafetyMonitor: Downloading MediaPipe hand landmarker model...")
+                    log.info(
+                        "SafetyMonitor: Downloading MediaPipe hand landmarker model..."
+                    )
                     ssl_ctx = ssl.create_default_context()
                     ssl_ctx.check_hostname = False
                     ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -947,7 +1271,7 @@ class SafetyMonitor:
             self.mp_hands = None
             self._mp_api = None
 
-    def process_frame(self, color_img: 'np.ndarray', depth_frame) -> 'np.ndarray':
+    def process_frame(self, color_img: "np.ndarray", depth_frame) -> "np.ndarray":
         """Process a frame: detect persons, check depth, detect gestures, draw overlays.
 
         Args:
@@ -972,7 +1296,9 @@ class SafetyMonitor:
 
         # ── Determine safety status based on nearest-link distance (robot frame) ──
         if self.persons_detected:
-            distances = [p["distance"] for p in self.persons_detected if p["distance"] < 20.0]
+            distances = [
+                p["distance"] for p in self.persons_detected if p["distance"] < 20.0
+            ]
             if distances:
                 self.closest_distance = min(distances)
                 nearest = min(self.persons_detected, key=lambda p: p["distance"])
@@ -1059,12 +1385,16 @@ class SafetyMonitor:
                         )
 
                 person = {
-                    "xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax,
-                    "cx": cx, "cy": cy,
-                    "depth_cam_m": depth_m,              # raw distance from camera
-                    "position_base": person_base,        # (x,y,z) in robot base frame
-                    "distance": link_distance,           # min distance to any robot link
-                    "link_index": link_index,            # 0=base..5=wrist3
+                    "xmin": xmin,
+                    "ymin": ymin,
+                    "xmax": xmax,
+                    "ymax": ymax,
+                    "cx": cx,
+                    "cy": cy,
+                    "depth_cam_m": depth_m,  # raw distance from camera
+                    "position_base": person_base,  # (x,y,z) in robot base frame
+                    "distance": link_distance,  # min distance to any robot link
+                    "link_index": link_index,  # 0=base..5=wrist3
                     "confidence": confidence,
                 }
                 self.persons_detected.append(person)
@@ -1080,7 +1410,9 @@ class SafetyMonitor:
                     box_color = self.COLOR_SAFE
                     thickness = 2
 
-                cv2.rectangle(color_img, (xmin, ymin), (xmax, ymax), box_color, thickness)
+                cv2.rectangle(
+                    color_img, (xmin, ymin), (xmax, ymax), box_color, thickness
+                )
                 cv2.circle(color_img, (cx, cy), 4, (0, 0, 255), -1)
 
                 # Distance label shows BOTH camera distance and robot-link distance
@@ -1093,10 +1425,23 @@ class SafetyMonitor:
                 conf_text = f"{confidence:.0%}"
                 label = f"Person {dist_text} ({conf_text})"
                 label_bg_y = max(ymin - 28, 0)
-                cv2.rectangle(color_img, (xmin, label_bg_y), (xmin + len(label) * 9 + 10, label_bg_y + 24),
-                              box_color, -1)
-                cv2.putText(color_img, label, (xmin + 5, label_bg_y + 17),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.COLOR_TEXT, 1, cv2.LINE_AA)
+                cv2.rectangle(
+                    color_img,
+                    (xmin, label_bg_y),
+                    (xmin + len(label) * 9 + 10, label_bg_y + 24),
+                    box_color,
+                    -1,
+                )
+                cv2.putText(
+                    color_img,
+                    label,
+                    (xmin + 5, label_bg_y + 17),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    self.COLOR_TEXT,
+                    1,
+                    cv2.LINE_AA,
+                )
 
         except Exception as e:
             log.warning(f"SafetyMonitor person detection error: {e}")
@@ -1137,9 +1482,15 @@ class SafetyMonitor:
                 for hand_landmarks in results.multi_hand_landmarks:
                     if self.mp_drawing:
                         self.mp_drawing.draw_landmarks(
-                            color_img, hand_landmarks, self.mp_hands_module.HAND_CONNECTIONS,
-                            self.mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=2, circle_radius=2),
-                            self.mp_drawing.DrawingSpec(color=(200, 200, 200), thickness=1),
+                            color_img,
+                            hand_landmarks,
+                            self.mp_hands_module.HAND_CONNECTIONS,
+                            self.mp_drawing.DrawingSpec(
+                                color=(0, 200, 0), thickness=2, circle_radius=2
+                            ),
+                            self.mp_drawing.DrawingSpec(
+                                color=(200, 200, 200), thickness=1
+                            ),
                         )
                     gesture = self._classify_gesture(hand_landmarks)
                     if gesture:
@@ -1147,9 +1498,19 @@ class SafetyMonitor:
                         wrist = hand_landmarks.landmark[0]
                         gx, gy = int(wrist.x * w), int(wrist.y * h) - 30
                         icon = "STOP" if gesture == "stop" else "RESUME"
-                        color = self.COLOR_DANGER if gesture == "stop" else self.COLOR_SAFE
-                        cv2.putText(color_img, icon, (gx - 30, max(gy, 20)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
+                        color = (
+                            self.COLOR_DANGER if gesture == "stop" else self.COLOR_SAFE
+                        )
+                        cv2.putText(
+                            color_img,
+                            icon,
+                            (gx - 30, max(gy, 20)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            color,
+                            2,
+                            cv2.LINE_AA,
+                        )
 
             elif self._mp_api == "tasks":
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -1160,21 +1521,55 @@ class SafetyMonitor:
                         pts = [(int(lm.x * w), int(lm.y * h)) for lm in hand_lms]
                         for pt in pts:
                             cv2.circle(color_img, pt, 3, (0, 200, 0), -1)
-                        connections = [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),
-                                       (5,9),(9,10),(10,11),(11,12),(9,13),(13,14),(14,15),(15,16),
-                                       (13,17),(17,18),(18,19),(19,20),(0,17)]
+                        connections = [
+                            (0, 1),
+                            (1, 2),
+                            (2, 3),
+                            (3, 4),
+                            (0, 5),
+                            (5, 6),
+                            (6, 7),
+                            (7, 8),
+                            (5, 9),
+                            (9, 10),
+                            (10, 11),
+                            (11, 12),
+                            (9, 13),
+                            (13, 14),
+                            (14, 15),
+                            (15, 16),
+                            (13, 17),
+                            (17, 18),
+                            (18, 19),
+                            (19, 20),
+                            (0, 17),
+                        ]
                         for i1, i2 in connections:
                             if i1 < len(pts) and i2 < len(pts):
-                                cv2.line(color_img, pts[i1], pts[i2], (200, 200, 200), 1)
+                                cv2.line(
+                                    color_img, pts[i1], pts[i2], (200, 200, 200), 1
+                                )
                         # Classify gesture
                         gesture = self._classify_gesture_tasks(hand_lms)
                         if gesture:
                             self.gesture = gesture
                             gx, gy = pts[0][0], pts[0][1] - 30
                             icon = "STOP" if gesture == "stop" else "RESUME"
-                            color = self.COLOR_DANGER if gesture == "stop" else self.COLOR_SAFE
-                            cv2.putText(color_img, icon, (gx - 30, max(gy, 20)),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
+                            color = (
+                                self.COLOR_DANGER
+                                if gesture == "stop"
+                                else self.COLOR_SAFE
+                            )
+                            cv2.putText(
+                                color_img,
+                                icon,
+                                (gx - 30, max(gy, 20)),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.7,
+                                color,
+                                2,
+                                cv2.LINE_AA,
+                            )
 
         except Exception as e:
             log.warning(f"SafetyMonitor gesture detection error: {e}")
@@ -1205,8 +1600,8 @@ class SafetyMonitor:
         lm = hand_landmarks.landmark
 
         # Finger tip and pip indices
-        tips = [4, 8, 12, 16, 20]    # thumb, index, middle, ring, pinky tips
-        pips = [3, 6, 10, 14, 18]    # corresponding PIP joints
+        tips = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky tips
+        pips = [3, 6, 10, 14, 18]  # corresponding PIP joints
 
         # Check which fingers are extended (tip above pip in y, except thumb uses x)
         fingers_up = []
@@ -1233,7 +1628,9 @@ class SafetyMonitor:
 
     def _draw_status_banner(self, color_img, w):
         """Draw safety status banner at the top of the frame."""
-        dist_str = f"{self.closest_distance:.2f}m" if self.closest_distance < 100 else "N/A"
+        dist_str = (
+            f"{self.closest_distance:.2f}m" if self.closest_distance < 100 else "N/A"
+        )
         if self.safety_status == "DANGER":
             bg_color = self.COLOR_DANGER
             if self.gesture_hold_stop:
@@ -1251,15 +1648,33 @@ class SafetyMonitor:
             text = "ZONE CLEAR" if n == 0 else f"ZONE CLEAR — {n} person(s) detected"
 
         cv2.rectangle(color_img, (0, 0), (w, 36), bg_color, -1)
-        cv2.putText(color_img, text, (12, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
-                    self.COLOR_TEXT, 2, cv2.LINE_AA)
+        cv2.putText(
+            color_img,
+            text,
+            (12, 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            self.COLOR_TEXT,
+            2,
+            cv2.LINE_AA,
+        )
 
         # Persons count + closest distance on right side
-        dist_disp = f"{self.closest_distance:.2f}m" if self.closest_distance < 100 else "N/A"
+        dist_disp = (
+            f"{self.closest_distance:.2f}m" if self.closest_distance < 100 else "N/A"
+        )
         info = f"Persons: {len(self.persons_detected)} | Closest: {dist_disp}"
         text_size = cv2.getTextSize(info, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0]
-        cv2.putText(color_img, info, (w - text_size[0] - 12, 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, self.COLOR_TEXT, 1, cv2.LINE_AA)
+        cv2.putText(
+            color_img,
+            info,
+            (w - text_size[0] - 12, 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            self.COLOR_TEXT,
+            1,
+            cv2.LINE_AA,
+        )
 
     def should_pause_robot(self) -> bool:
         """Returns True if the robot should be paused based on current safety state."""
@@ -1268,12 +1683,17 @@ class SafetyMonitor:
     def should_resume_robot(self) -> bool:
         """Returns True if the robot can safely resume.
         Requires: zone clear AND explicit thumbs-up gesture (no auto-resume)."""
-        return not self.person_in_zone and self.gesture_hold_resume and not self.gesture_hold_stop
+        return (
+            not self.person_in_zone
+            and self.gesture_hold_resume
+            and not self.gesture_hold_stop
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  REALSENSE CAPTURE (with integrated safety monitoring)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class RealSenseCapture:
     """Background capture from Intel RealSense L515 with integrated safety monitoring.
@@ -1305,16 +1725,30 @@ class RealSenseCapture:
             self.pipeline = rs.pipeline()
             self.has_depth = False
             configs = [
-                ("1280x720 color + 640x480 depth", True, lambda c: (
-                    c.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30),
-                    c.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30),
-                )),
-                ("1280x720 color only", False, lambda c: (
-                    c.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30),
-                )),
-                ("1920x1080 color only", False, lambda c: (
-                    c.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30),
-                )),
+                (
+                    "1280x720 color + 640x480 depth",
+                    True,
+                    lambda c: (
+                        c.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30),
+                        c.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30),
+                    ),
+                ),
+                (
+                    "1280x720 color only",
+                    False,
+                    lambda c: (
+                        c.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30),
+                    ),
+                ),
+                (
+                    "1920x1080 color only",
+                    False,
+                    lambda c: (
+                        c.enable_stream(
+                            rs.stream.color, 1920, 1080, rs.format.bgr8, 30
+                        ),
+                    ),
+                ),
             ]
             profile = None
             for desc, has_depth, setup_fn in configs:
@@ -1343,12 +1777,17 @@ class RealSenseCapture:
                 color_stream = profile.get_stream(rs.stream.color)
                 intrin = color_stream.as_video_stream_profile().get_intrinsics()
                 self.safety.intrinsics = {
-                    "fx": intrin.fx, "fy": intrin.fy,
-                    "cx": intrin.ppx, "cy": intrin.ppy,
-                    "width": intrin.width, "height": intrin.height,
+                    "fx": intrin.fx,
+                    "fy": intrin.fy,
+                    "cx": intrin.ppx,
+                    "cy": intrin.ppy,
+                    "width": intrin.width,
+                    "height": intrin.height,
                 }
-                log.info(f"RealSense intrinsics: fx={intrin.fx:.1f} fy={intrin.fy:.1f} "
-                         f"cx={intrin.ppx:.1f} cy={intrin.ppy:.1f}")
+                log.info(
+                    f"RealSense intrinsics: fx={intrin.fx:.1f} fy={intrin.fy:.1f} "
+                    f"cx={intrin.ppx:.1f} cy={intrin.ppy:.1f}"
+                )
             except Exception as e:
                 log.warning(f"Could not read RealSense intrinsics: {e}")
 
@@ -1363,7 +1802,9 @@ class RealSenseCapture:
         # Run heavy safety processing (OpenVINO + MediaPipe) every Nth frame to reduce CPU load.
         # Person position barely changes between frames; the previous detection persists in
         # self.safety.persons_detected so the overlay stays on screen.
-        SAFETY_PROCESS_EVERY_N = 3   # process 1 of every 3 frames → ~10 Hz on a 30 FPS camera
+        SAFETY_PROCESS_EVERY_N = (
+            3  # process 1 of every 3 frames → ~10 Hz on a 30 FPS camera
+        )
         process_counter = 0
         while self.running:
             try:
@@ -1383,15 +1824,21 @@ class RealSenseCapture:
                 if df:
                     depth_colored_frame = self.colorizer.colorize(df)
                     depth_img = np.asanyarray(depth_colored_frame.get_data())
-                    depth_img = cv2.resize(depth_img, (color_img.shape[1], color_img.shape[0]))
+                    depth_img = cv2.resize(
+                        depth_img, (color_img.shape[1], color_img.shape[0])
+                    )
                 else:
                     depth_img = None
 
                 # ── YOLO detection (every 5th frame) + draw cached results every frame ──
                 if self.safety.yolo_model:
                     if process_counter % 5 == 0:
-                        self.safety._detect_yolo(color_img, color_img.shape[0], color_img.shape[1])
-                    self.safety._draw_yolo(color_img, color_img.shape[0], color_img.shape[1])
+                        self.safety._detect_yolo(
+                            color_img, color_img.shape[0], color_img.shape[1]
+                        )
+                    self.safety._draw_yolo(
+                        color_img, color_img.shape[0], color_img.shape[1]
+                    )
 
                 # ── Run safety monitoring at reduced rate ──
                 if process_counter % SAFETY_PROCESS_EVERY_N == 0:
@@ -1404,12 +1851,22 @@ class RealSenseCapture:
                 self.frame_count += 1
                 elapsed = time.time() - self.start_time
                 fps_actual = self.frame_count / max(elapsed, 0.001)
-                cv2.putText(color_img, f"L515 | {fps_actual:.1f} FPS | {datetime.now().strftime('%H:%M:%S')}",
-                            (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                cv2.putText(
+                    color_img,
+                    f"L515 | {fps_actual:.1f} FPS | {datetime.now().strftime('%H:%M:%S')}",
+                    (10, 56),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    1,
+                    cv2.LINE_AA,
+                )
 
                 with self.lock:
                     self.color_frame = color_img.copy()
-                    self.depth_colormap = depth_img.copy() if depth_img is not None else None
+                    self.depth_colormap = (
+                        depth_img.copy() if depth_img is not None else None
+                    )
             except Exception as e:
                 if self.running:
                     log.warning(f"Capture error: {e}")
@@ -1420,7 +1877,11 @@ class RealSenseCapture:
         Downsizing halves the width (1920→960) which reduces JPEG encode time and
         network payload by ~4x with no visible quality loss on a dashboard panel."""
         with self.lock:
-            if mode == "combined" and self.color_frame is not None and self.depth_colormap is not None:
+            if (
+                mode == "combined"
+                and self.color_frame is not None
+                and self.depth_colormap is not None
+            ):
                 frame = np.hstack((self.color_frame, self.depth_colormap))
             elif mode == "depth" and self.depth_colormap is not None:
                 frame = self.depth_colormap
@@ -1432,7 +1893,9 @@ class RealSenseCapture:
         h, w = frame.shape[:2]
         if w > max_width:
             scale = max_width / w
-            frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(
+                frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA
+            )
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
         return buf.tobytes()
 
@@ -1444,37 +1907,81 @@ class RealSenseCapture:
             except Exception:
                 pass
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  DEMO DATA GENERATOR
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def generate_demo(t: float, prev: Optional[Dict] = None) -> Dict:
-    """Generate realistic fake telemetry for demo mode."""
+    """Generate a single synthetic telemetry frame for demo / offline mode.
+
+    Produces smoothly animated joint positions, velocities, currents, torques,
+    temperatures, TCP pose, forces, power, and safety/status fields driven by
+    sinusoidal functions of *t*.  The output dict has the same schema as the
+    dict returned by :func:`parse_rtde_record` so the dashboard UI doesn't
+    need a separate code path.
+
+    Args:
+        t (float): Elapsed time in seconds since demo mode started.
+        prev (dict | None): Previous telemetry sample used to accumulate
+            energy (``prev["energy"]``).  Pass ``None`` on the first call.
+
+    Returns:
+        dict: Flat telemetry dict with keys ``t``, ``q``, ``qd``, ``cur``,
+            ``torque``, ``temps``, ``trackErr``, ``tcp``, ``tcpSpeed``,
+            ``forces``, ``forceScalar``, ``v48``, ``iRobot``, ``power``,
+            ``energy``, ``momentum``, ``speedScaling``, ``safetyBits``,
+            ``robotBits``, and several status description fields.
+    """
     p = t * 0.3
-    q  = [round(math.sin(p + i * 0.8) * 1.2 + (-1.57 if i == 1 else 0), 4) for i in range(6)]
+    q = [
+        round(math.sin(p + i * 0.8) * 1.2 + (-1.57 if i == 1 else 0), 4)
+        for i in range(6)
+    ]
     qd = [round(math.cos(p + i * 0.8) * 0.36, 4) for i in range(6)]
     cur = [round(abs(math.sin(p + i * 0.5)) * 1.8 + 0.3, 4) for i in range(6)]
     torque = [round(cur[i] * (8 + i * 2), 2) for i in range(6)]
-    temps = [round(32 + i * 3 + math.sin(t * 0.01 + i) * 2 + t * 0.002, 1) for i in range(6)]
+    temps = [
+        round(32 + i * 3 + math.sin(t * 0.01 + i) * 2 + t * 0.002, 1) for i in range(6)
+    ]
     track_err = [round((hash(f"{t}{i}") % 1000 - 500) / 500000, 6) for i in range(6)]
     forces = {
-        "Fx": round(math.sin(p * 1.1) * 5, 2), "Fy": round(math.cos(p * 0.9) * 4, 2),
+        "Fx": round(math.sin(p * 1.1) * 5, 2),
+        "Fy": round(math.cos(p * 0.9) * 4, 2),
         "Fz": round(-9.8 + math.sin(p * 0.7) * 2, 2),
-        "Mx": round(math.sin(p * 1.3) * 0.8, 3), "My": round(math.cos(p * 1.1) * 0.6, 3),
+        "Mx": round(math.sin(p * 1.3) * 0.8, 3),
+        "My": round(math.cos(p * 1.1) * 0.6, 3),
         "Mz": round(math.sin(p * 0.8) * 0.3, 3),
     }
-    force_scalar = round(math.sqrt(forces["Fx"]**2 + forces["Fy"]**2 + forces["Fz"]**2), 1)
+    force_scalar = round(
+        math.sqrt(forces["Fx"] ** 2 + forces["Fy"] ** 2 + forces["Fz"] ** 2), 1
+    )
     v48 = round(47.8 + math.sin(t * 0.05) * 0.3, 2)
     i_robot = round(sum(cur) * 0.4 + 0.5, 2)
     prev_energy = prev.get("energy", 0) if prev else 0
     return {
-        "t": round(t, 2), "q": q, "qd": qd, "cur": cur, "torque": torque,
-        "temps": temps, "trackErr": track_err,
-        "tcp": {"x": round(0.4 + math.sin(p) * 0.15, 4), "y": round(-0.2 + math.cos(p) * 0.1, 4),
-                "z": round(0.35 + math.sin(p * 0.5) * 0.05, 4), "rx": 3.14, "ry": 0.01, "rz": -0.01},
+        "t": round(t, 2),
+        "q": q,
+        "qd": qd,
+        "cur": cur,
+        "torque": torque,
+        "temps": temps,
+        "trackErr": track_err,
+        "tcp": {
+            "x": round(0.4 + math.sin(p) * 0.15, 4),
+            "y": round(-0.2 + math.cos(p) * 0.1, 4),
+            "z": round(0.35 + math.sin(p * 0.5) * 0.05, 4),
+            "rx": 3.14,
+            "ry": 0.01,
+            "rz": -0.01,
+        },
         "tcpSpeed": round(abs(math.cos(p) * 0.045) + 0.001, 4),
-        "forces": forces, "forceScalar": force_scalar,
-        "v48": v48, "iRobot": i_robot, "power": round(v48 * i_robot, 1),
+        "forces": forces,
+        "forceScalar": force_scalar,
+        "v48": v48,
+        "iRobot": i_robot,
+        "power": round(v48 * i_robot, 1),
         "energy": round(prev_energy + v48 * i_robot * 0.001 / 3600, 4),
         "momentum": round(abs(math.sin(p)) * 3.5, 2),
         "speedScaling": round(0.98 + (hash(str(t)) % 20) / 1000, 2),
@@ -1483,24 +1990,50 @@ def generate_demo(t: float, prev: Optional[Dict] = None) -> Dict:
         "deviationRatio": round(abs(math.cos(p * 0.3)) * 0.08, 3),
         "vibRMS": round(abs(math.sin(t * 0.7)) * 0.4, 3),
         "toolTemp": round(28 + math.sin(t * 0.02) * 3, 1),
-        "robotMode": 7, "robotModeDesc": "RUNNING",
-        "safetyStatus": 1, "safetyStatusDesc": "NORMAL", "safetyModeDesc": "NORMAL",
-        "runtimeState": 2, "runtimeStateDesc": "RUNNING",
+        "robotMode": 7,
+        "robotModeDesc": "RUNNING",
+        "safetyStatus": 1,
+        "safetyStatusDesc": "NORMAL",
+        "safetyModeDesc": "NORMAL",
+        "runtimeState": 2,
+        "runtimeStateDesc": "RUNNING",
         "safetyBits": {k: (1 if k == "normal_mode" else 0) for k in SAFETY_BIT_LABELS},
-        "robotBits": {"power_on": 1, "program_running": 1, "teach_button_pressed": 0, "power_button_pressed": 0},
-        "payloadMass": 1.2, "isProtStopped": False, "isEmStopped": False,
+        "robotBits": {
+            "power_on": 1,
+            "program_running": 1,
+            "teach_button_pressed": 0,
+            "power_button_pressed": 0,
+        },
+        "payloadMass": 1.2,
+        "isProtStopped": False,
+        "isEmStopped": False,
     }
 
 
 def parse_rtde_record(r: Dict) -> Dict:
-    """Parse a raw RTDE record dict into the flat dashboard format.
+    """Convert a hierarchical ``collect_sample`` record to the flat dashboard format.
 
-    Consumes the cleaned-up collect_sample output which only uses real
-    ur_rtde API methods. Fields not exposed by ur_rtde (energy, tool temp,
-    collision ratio, deviation ratio) default to 0 and are labeled "N/A"
-    in the UI rather than treated as real zeros.
+    Extracts joint positions, velocities, currents, torques, temperatures,
+    tracking errors, TCP pose/speed/force, power, and safety/status fields
+    from the nested dict produced by ``RobotInterface.collect_sample``.
+
+    Torque priority (highest to lowest): ``joint_torques_Nm`` →
+    ``actual_current_as_torque_Nm`` → ``target_moment_Nm`` → 0.0.
+
+    Fields that the ur_rtde library does not expose (accumulated energy, tool
+    temperature, collision ratio, deviation ratio, time-scale source) are set
+    to ``0.0`` or ``"N/A"`` and annotated with comments in the source.
+
+    Args:
+        r (dict): Nested record dict as returned by
+            ``RobotInterface.collect_sample``.
+
+    Returns:
+        dict: Flat telemetry dict with the same schema as :func:`generate_demo`,
+            suitable for appending to ``AppState.history`` and rendering in
+            the NiceGUI dashboard.
     """
-    j  = r.get("joints", {})
+    j = r.get("joints", {})
     tc = r.get("tcp", {})
     pw = r.get("power", {})
     ms = r.get("motion_scaling", {})
@@ -1509,7 +2042,7 @@ def parse_rtde_record(r: Dict) -> Dict:
     ta = r.get("tool_accelerometer", {})
     pl = r.get("payload", {})
 
-    q_dict  = j.get("actual_position_rad", {}) or {}
+    q_dict = j.get("actual_position_rad", {}) or {}
     qd_dict = j.get("actual_velocity_rad_s", {}) or {}
     cur_dict = j.get("actual_current_A", {}) or {}
     temp_dict = j.get("temperature_C", {}) or {}
@@ -1524,7 +2057,7 @@ def parse_rtde_record(r: Dict) -> Dict:
     actual_torque_dict = j.get("actual_current_as_torque_Nm", {}) or {}
     target_moment_dict = j.get("target_moment_Nm", {}) or {}
 
-    q  = [q_dict.get(k, 0) or 0 for k in JOINT_NAMES]
+    q = [q_dict.get(k, 0) or 0 for k in JOINT_NAMES]
     qd = [qd_dict.get(k, 0) or 0 for k in JOINT_NAMES]
     cur = [cur_dict.get(k, 0) or 0 for k in JOINT_NAMES]
     temps = [temp_dict.get(k, 0) or 0 for k in JOINT_NAMES]
@@ -1547,20 +2080,20 @@ def parse_rtde_record(r: Dict) -> Dict:
     track_err = [q[i] - tgt[i] for i in range(6)]
 
     tcp_pose = tc.get("actual_pose_m_rad", {}) or {}
-    tcp_spd  = tc.get("actual_speed_m_s", {}) or {}
+    tcp_spd = tc.get("actual_speed_m_s", {}) or {}
     sv = [tcp_spd.get(k, 0) or 0 for k in CART_AXES]
-    tcp_speed = math.sqrt(sv[0]**2 + sv[1]**2 + sv[2]**2)
+    tcp_speed = math.sqrt(sv[0] ** 2 + sv[1] ** 2 + sv[2] ** 2)
 
     f_src = tc.get("actual_force_N_Nm", {}) or {}
     forces = {k: (f_src.get(k, 0) or 0) for k in FORCE_AXES}
-    force_scalar = math.sqrt(forces["Fx"]**2 + forces["Fy"]**2 + forces["Fz"]**2)
+    force_scalar = math.sqrt(forces["Fx"] ** 2 + forces["Fy"] ** 2 + forces["Fz"] ** 2)
 
     ax = (ta.get("ax") or 0) if ta else 0
     ay = (ta.get("ay") or 0) if ta else 0
     az = (ta.get("az") or 0) if ta else 0
     # Vibration proxy: magnitude of acceleration minus gravity.
     # Works regardless of tool flange orientation.
-    a_mag = math.sqrt(ax*ax + ay*ay + az*az)
+    a_mag = math.sqrt(ax * ax + ay * ay + az * az)
     vib_rms = abs(a_mag - 9.81) if a_mag > 0.1 else 0
 
     v48 = pw.get("robot_voltage_48V", 0) or 0
@@ -1568,18 +2101,27 @@ def parse_rtde_record(r: Dict) -> Dict:
 
     return {
         "t": round(ti.get("elapsed_time_s", 0) or 0, 2),
-        "q": q, "qd": qd, "cur": cur, "torque": torque, "temps": temps, "trackErr": track_err,
-        "tcp": tcp_pose, "tcpSpeed": round(tcp_speed, 4),
-        "forces": forces, "forceScalar": round(force_scalar, 1),
-        "v48": round(v48, 2), "iRobot": round(i_robot, 2), "power": round(v48 * i_robot, 1),
-        "energy": 0.0,            # getActualRobotEnergyConsumed not in ur_rtde
+        "q": q,
+        "qd": qd,
+        "cur": cur,
+        "torque": torque,
+        "temps": temps,
+        "trackErr": track_err,
+        "tcp": tcp_pose,
+        "tcpSpeed": round(tcp_speed, 4),
+        "forces": forces,
+        "forceScalar": round(force_scalar, 1),
+        "v48": round(v48, 2),
+        "iRobot": round(i_robot, 2),
+        "power": round(v48 * i_robot, 1),
+        "energy": 0.0,  # getActualRobotEnergyConsumed not in ur_rtde
         "momentum": round((pw.get("cartesian_momentum_kg_m_s", 0) or 0), 2),
         "speedScaling": round((ms.get("speed_scaling_factor", 1) or 1), 2),
-        "timeScaleDesc": "N/A",   # getTimeScaleSource not in ur_rtde
-        "collisionRatio": 0.0,    # getCollisionDetectionRatio not in ur_rtde
-        "deviationRatio": 0.0,    # getJointPositionDeviationRatio not in ur_rtde
+        "timeScaleDesc": "N/A",  # getTimeScaleSource not in ur_rtde
+        "collisionRatio": 0.0,  # getCollisionDetectionRatio not in ur_rtde
+        "deviationRatio": 0.0,  # getJointPositionDeviationRatio not in ur_rtde
         "vibRMS": round(vib_rms, 3),
-        "toolTemp": 0.0,          # getToolTemperature not in ur_rtde
+        "toolTemp": 0.0,  # getToolTemperature not in ur_rtde
         "robotMode": st.get("robot_mode_code", -1),
         "robotModeDesc": st.get("robot_mode_desc", "UNKNOWN"),
         "safetyStatus": st.get("safety_status_code", -1),
@@ -1594,9 +2136,11 @@ def parse_rtde_record(r: Dict) -> Dict:
         "isEmStopped": bool(st.get("is_emergency_stopped", False)),
     }
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  DATA LOGGER
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class DataLogger:
     def __init__(self, enabled=True, outdir=None, buffer_size=50):
@@ -1612,7 +2156,9 @@ class DataLogger:
     def setup(self, first_sample: Dict) -> bool:
         if not self.enabled:
             return True
-        log_dir = self.outdir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "UR5_data_logs")
+        log_dir = self.outdir or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "UR5_data_logs"
+        )
         os.makedirs(log_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         csv_path = os.path.join(log_dir, f"ur5e_data_{ts}.csv")
@@ -1621,7 +2167,9 @@ class DataLogger:
             flat = flatten_dict(first_sample)
             self.csv_file = open(csv_path, "w", newline="", encoding="utf-8")
             self.json_file = open(json_path, "w", encoding="utf-8")
-            self.csv_writer = csv.DictWriter(self.csv_file, fieldnames=list(flat.keys()), extrasaction="ignore")
+            self.csv_writer = csv.DictWriter(
+                self.csv_file, fieldnames=list(flat.keys()), extrasaction="ignore"
+            )
             self.csv_writer.writeheader()
             self.csv_writer.writerow(flat)
             self.json_file.write(json.dumps(first_sample, default=str) + "\n")
@@ -1656,26 +2204,31 @@ class DataLogger:
         if self.json_file:
             self.json_file.close()
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  WEBSOCKET SERVER (for React dashboard)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _ws_clients = set()
-_ws_lock    = threading.Lock()
-_ws_loop    = None
+_ws_lock = threading.Lock()
+_ws_loop = None
 
 
 async def _ws_handler(websocket):
     with _ws_lock:
         _ws_clients.add(websocket)
     addr = websocket.remote_address
-    log.info(f"[WS] Dashboard connected: {addr[0]}:{addr[1]} ({len(_ws_clients)} client(s))")
+    log.info(
+        f"[WS] Dashboard connected: {addr[0]}:{addr[1]} ({len(_ws_clients)} client(s))"
+    )
     try:
         await websocket.wait_closed()
     finally:
         with _ws_lock:
             _ws_clients.discard(websocket)
-        log.info(f"[WS] Dashboard disconnected: {addr[0]}:{addr[1]} ({len(_ws_clients)} client(s))")
+        log.info(
+            f"[WS] Dashboard disconnected: {addr[0]}:{addr[1]} ({len(_ws_clients)} client(s))"
+        )
 
 
 async def _ws_serve(port):
@@ -1687,13 +2240,17 @@ async def _ws_serve(port):
 def _start_ws_thread(port=8765):
     global _ws_loop
     if not HAS_WEBSOCKETS:
-        log.warning("websockets not installed — React dashboard bridge disabled (pip install websockets)")
+        log.warning(
+            "websockets not installed — React dashboard bridge disabled (pip install websockets)"
+        )
         return
+
     def _run():
         global _ws_loop
         _ws_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(_ws_loop)
         _ws_loop.run_until_complete(_ws_serve(port))
+
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     time.sleep(0.3)
@@ -1716,6 +2273,7 @@ def broadcast_ws(record: Dict):
 #  APPLICATION STATE
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class AppState:
     """Shared state across all browser sessions."""
 
@@ -1727,7 +2285,9 @@ class AppState:
             warning_radius=args.warning_radius,
             model_path=args.model_path,
         )
-        self.logger = DataLogger(enabled=args.log, outdir=args.outdir, buffer_size=args.buffer_size)
+        self.logger = DataLogger(
+            enabled=args.log, outdir=args.outdir, buffer_size=args.buffer_size
+        )
 
         self.history: deque = deque(maxlen=HISTORY_LEN)
         self.sample: Optional[Dict] = None
@@ -1754,7 +2314,7 @@ class AppState:
         self.camera.start()
 
         # Start WebSocket server for React dashboard
-        _start_ws_thread(port=getattr(self.args, 'ws_port', 8767))
+        _start_ws_thread(port=getattr(self.args, "ws_port", 8767))
 
         # First sample for logger
         if self.is_live:
@@ -1763,12 +2323,16 @@ class AppState:
                 self.logger.setup(raw)
 
         threading.Thread(target=self._telemetry_loop, daemon=True).start()
-        log.info(f"Telemetry loop started ({'LIVE' if self.is_live else 'DEMO'} mode @ {self.args.rate} Hz)")
+        log.info(
+            f"Telemetry loop started ({'LIVE' if self.is_live else 'DEMO'} mode @ {self.args.rate} Hz)"
+        )
 
         # Safety auto-control loop (only when robot is connected)
         if self.is_live and self.args.safety_auto:
             threading.Thread(target=self._safety_control_loop, daemon=True).start()
-            log.info(f"Safety auto-control loop started (radius={self.args.safety_radius}m)")
+            log.info(
+                f"Safety auto-control loop started (radius={self.args.safety_radius}m)"
+            )
 
     def _safety_control_loop(self):
         """Continuously monitors safety state and pauses/resumes robot automatically.
@@ -1793,13 +2357,23 @@ class AppState:
                         log.warning("SAFETY: STOP gesture — hard stopping robot")
                         self.robot.dispatch_command("stopJ", {"acceleration": 5.0})
                         self.robot.dispatch_command("stopScript", {})
-                        self._log_event(ts, "⚠ GESTURE STOP — robot halted immediately", "error")
+                        self._log_event(
+                            ts, "⚠ GESTURE STOP — robot halted immediately", "error"
+                        )
                     else:
                         # PROXIMITY — smooth deceleration
-                        dist_str = f"{safety.closest_distance:.2f}m" if safety.closest_distance < 100 else "N/A"
-                        log.warning(f"SAFETY: Person in zone ({dist_str}) — pausing robot")
+                        dist_str = (
+                            f"{safety.closest_distance:.2f}m"
+                            if safety.closest_distance < 100
+                            else "N/A"
+                        )
+                        log.warning(
+                            f"SAFETY: Person in zone ({dist_str}) — pausing robot"
+                        )
                         self.robot.dispatch_command("stopL", {"deceleration": 10.0})
-                        self._log_event(ts, f"⚠ SAFETY STOP — person at {dist_str}", "error")
+                        self._log_event(
+                            ts, f"⚠ SAFETY STOP — person at {dist_str}", "error"
+                        )
 
                     safety.robot_paused_by_safety = True
 
@@ -1818,7 +2392,9 @@ class AppState:
     def _telemetry_loop(self):
         interval = 1.0 / self.args.rate
         ws_send_every = max(1, int(self.args.rate / 10))  # ~10 FPS to React dashboard
-        accumulated_energy_Wh = 0.0  # derived via power × dt since RTDE doesn't expose it
+        accumulated_energy_Wh = (
+            0.0  # derived via power × dt since RTDE doesn't expose it
+        )
         last_loop_start = None
         while self.running:
             loop_start = time.time()
@@ -1866,10 +2442,12 @@ class AppState:
         if status == "ok":
             self._log_event(ts, f"✓ {command}", "ok")
         else:
-            self._log_event(ts, f"✗ {command}: {result.get('message','')}", "error")
+            self._log_event(ts, f"✗ {command}: {result.get('message', '')}", "error")
         return result
 
-    def send_command_verified(self, command: str, params: Optional[Dict] = None) -> Dict:
+    def send_command_verified(
+        self, command: str, params: Optional[Dict] = None
+    ) -> Dict:
         """Send a command and verify the robot actually reached the expected state.
         Returns {"status": "ok"/"error", "message": "...", "verified": True/False}"""
         params = params or {}
@@ -1881,11 +2459,17 @@ class AppState:
 
         # Step 2: for state-change commands, poll to verify
         if not self.connected_and_can_poll():
-            return {**result, "verified": False, "message": "Cannot poll — not connected"}
+            return {
+                **result,
+                "verified": False,
+                "message": "Cannot poll — not connected",
+            }
 
         try:
             if command == "powerOn":
-                return self._poll_robot_mode([4, 5, 7], timeout=5.0, desc="POWER_ON/IDLE/RUNNING")
+                return self._poll_robot_mode(
+                    [4, 5, 7], timeout=5.0, desc="POWER_ON/IDLE/RUNNING"
+                )
             elif command == "powerOff":
                 return self._poll_robot_mode([3], timeout=5.0, desc="POWER_OFF")
             elif command == "brakeRelease":
@@ -1905,7 +2489,11 @@ class AppState:
         except Exception as e:
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_event(ts, f"⚠ verify failed: {e}", "error")
-            return {"status": "ok", "verified": False, "message": f"Command sent but verify failed: {e}"}
+            return {
+                "status": "ok",
+                "verified": False,
+                "message": f"Command sent but verify failed: {e}",
+            }
 
     def connected_and_can_poll(self) -> bool:
         return self.is_live and self.robot.connected and self.robot.rtde_r is not None
@@ -1919,12 +2507,21 @@ class AppState:
                 ts = datetime.now().strftime("%H:%M:%S")
                 mode_name = ROBOT_MODE_MAP.get(mode, str(mode))
                 self._log_event(ts, f"✓ Verified: {mode_name}", "ok")
-                return {"status": "ok", "verified": True, "message": f"Robot is {mode_name}"}
+                return {
+                    "status": "ok",
+                    "verified": True,
+                    "message": f"Robot is {mode_name}",
+                }
             time.sleep(0.2)
-        return {"status": "error", "verified": False,
-                "message": f"Timeout waiting for {desc} (still mode {ROBOT_MODE_MAP.get(mode, mode)})"}
+        return {
+            "status": "error",
+            "verified": False,
+            "message": f"Timeout waiting for {desc} (still mode {ROBOT_MODE_MAP.get(mode, mode)})",
+        }
 
-    def _poll_joint_target(self, target: list, timeout: float, tolerance: float = 0.01) -> Dict:
+    def _poll_joint_target(
+        self, target: list, timeout: float, tolerance: float = 0.01
+    ) -> Dict:
         """Poll getActualQ until all joints are within tolerance of target."""
         if len(target) != 6:
             return {"status": "ok", "verified": False, "message": "Invalid target"}
@@ -1937,13 +2534,22 @@ class AppState:
                 if all(e < tolerance for e in errors):
                     ts = datetime.now().strftime("%H:%M:%S")
                     self._log_event(ts, f"✓ moveJ reached target", "ok")
-                    return {"status": "ok", "verified": True, "message": "Target reached"}
+                    return {
+                        "status": "ok",
+                        "verified": True,
+                        "message": "Target reached",
+                    }
             time.sleep(0.1)
         max_err = max(errors)
-        return {"status": "error", "verified": False,
-                "message": f"Timeout — max joint error: {max_err:.4f} rad"}
+        return {
+            "status": "error",
+            "verified": False,
+            "message": f"Timeout — max joint error: {max_err:.4f} rad",
+        }
 
-    def _poll_tcp_target(self, target: list, timeout: float, tolerance: float = 0.002) -> Dict:
+    def _poll_tcp_target(
+        self, target: list, timeout: float, tolerance: float = 0.002
+    ) -> Dict:
         """Poll getActualTCPPose until within tolerance of target."""
         if len(target) != 6:
             return {"status": "ok", "verified": False, "message": "Invalid target"}
@@ -1953,13 +2559,21 @@ class AppState:
             if pose and len(pose) == 6:
                 errors = [abs(pose[i] - target[i]) for i in range(6)]
                 # Position tolerance: 2mm, orientation tolerance: 0.01 rad
-                tols = [tolerance]*3 + [0.01]*3
+                tols = [tolerance] * 3 + [0.01] * 3
                 if all(errors[i] < tols[i] for i in range(6)):
                     ts = datetime.now().strftime("%H:%M:%S")
                     self._log_event(ts, f"✓ moveL reached target", "ok")
-                    return {"status": "ok", "verified": True, "message": "Target reached"}
+                    return {
+                        "status": "ok",
+                        "verified": True,
+                        "message": "Target reached",
+                    }
             time.sleep(0.1)
-        return {"status": "error", "verified": False, "message": "Timeout — target not reached"}
+        return {
+            "status": "error",
+            "verified": False,
+            "message": "Timeout — target not reached",
+        }
 
     def _poll_stopped(self, timeout: float = 3.0) -> Dict:
         """Poll until joint velocities are near zero (robot stopped)."""
@@ -1971,7 +2585,11 @@ class AppState:
                 self._log_event(ts, f"✓ Robot stopped", "ok")
                 return {"status": "ok", "verified": True, "message": "Robot stopped"}
             time.sleep(0.05)  # Fast poll for safety
-        return {"status": "error", "verified": False, "message": "Timeout — robot may still be moving"}
+        return {
+            "status": "error",
+            "verified": False,
+            "message": "Timeout — robot may still be moving",
+        }
 
     def shutdown(self):
         self.running = False
@@ -1988,146 +2606,536 @@ PLOTLY_LAYOUT_BASE = dict(
     template="plotly_dark",
     margin=dict(l=40, r=15, t=30, b=30),
     font=dict(family="Inter, sans-serif", size=10, color="#C9D1D9"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=9, color="#8B949E")),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1,
+        font=dict(size=9, color="#8B949E"),
+    ),
     xaxis=dict(title="", gridcolor="#1C2333", showgrid=True, zeroline=False),
     yaxis=dict(title="", gridcolor="#1C2333", showgrid=True, zeroline=False),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(11,17,32,0.6)",
     height=240,
-    hoverlabel=dict(bgcolor="#1C2333", font_size=11, font_family="Inter, sans-serif", bordercolor="#30363D"),
+    hoverlabel=dict(
+        bgcolor="#1C2333",
+        font_size=11,
+        font_family="Inter, sans-serif",
+        bordercolor="#30363D",
+    ),
 )
 
 
 def make_joint_pos_chart(history: list) -> go.Figure:
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Joint Positions (rad)", font=dict(size=12, color="#E6EDF3"))})
+    """Build a Plotly time-series figure for all 6 joint positions.
+
+    Args:
+        history (list[dict]): Telemetry sample dicts, each containing a
+            ``"t"`` timestamp and ``"q"`` list of 6 joint angles in radians.
+
+    Returns:
+        go.Figure: Dark-themed Plotly scatter figure with one coloured trace
+            per joint, labelled by ``JOINT_LABELS``.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Joint Positions (rad)", font=dict(size=12, color="#E6EDF3")
+            ),
+        }
+    )
     ts = [s["t"] for s in history]
     for i, jn in enumerate(JOINT_LABELS):
-        fig.add_trace(go.Scatter(x=ts, y=[s["q"][i] for s in history], mode="lines",
-                                 name=jn, line=dict(color=J_COLORS[i], width=1.5)))
+        fig.add_trace(
+            go.Scatter(
+                x=ts,
+                y=[s["q"][i] for s in history],
+                mode="lines",
+                name=jn,
+                line=dict(color=J_COLORS[i], width=1.5),
+            )
+        )
     return fig
 
 
 def make_joint_vel_chart(history: list) -> go.Figure:
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Joint Velocities (rad/s)", font=dict(size=12, color="#E6EDF3"))})
+    """Build a Plotly time-series figure for all 6 joint velocities.
+
+    Args:
+        history (list[dict]): Telemetry sample dicts, each containing a
+            ``"t"`` timestamp and ``"qd"`` list of 6 joint velocities in
+            rad/s.
+
+    Returns:
+        go.Figure: Dark-themed Plotly scatter figure with one coloured trace
+            per joint.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Joint Velocities (rad/s)", font=dict(size=12, color="#E6EDF3")
+            ),
+        }
+    )
     ts = [s["t"] for s in history]
     for i, jn in enumerate(JOINT_LABELS):
-        fig.add_trace(go.Scatter(x=ts, y=[s["qd"][i] for s in history], mode="lines",
-                                 name=jn, line=dict(color=J_COLORS[i], width=1.5)))
+        fig.add_trace(
+            go.Scatter(
+                x=ts,
+                y=[s["qd"][i] for s in history],
+                mode="lines",
+                name=jn,
+                line=dict(color=J_COLORS[i], width=1.5),
+            )
+        )
     return fig
 
 
 def make_force_chart(history: list) -> go.Figure:
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="TCP Force / Torque", font=dict(size=12, color="#E6EDF3"))})
+    """Build a Plotly time-series figure for all 6 TCP force/torque components.
+
+    Args:
+        history (list[dict]): Telemetry sample dicts, each containing a
+            ``"t"`` timestamp and ``"forces"`` dict with keys
+            ``Fx``, ``Fy``, ``Fz``, ``Mx``, ``My``, ``Mz``.
+
+    Returns:
+        go.Figure: Dark-themed Plotly scatter figure with per-axis traces
+            coloured by ``F_COLORS``.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="TCP Force / Torque", font=dict(size=12, color="#E6EDF3")
+            ),
+        }
+    )
     ts = [s["t"] for s in history]
     for k, c in F_COLORS.items():
-        fig.add_trace(go.Scatter(x=ts, y=[s["forces"][k] for s in history], mode="lines",
-                                 name=k, line=dict(color=c, width=1.5)))
+        fig.add_trace(
+            go.Scatter(
+                x=ts,
+                y=[s["forces"][k] for s in history],
+                mode="lines",
+                name=k,
+                line=dict(color=c, width=1.5),
+            )
+        )
     return fig
 
 
 def make_power_chart(history: list) -> go.Figure:
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Power Draw (W)", font=dict(size=12, color="#E6EDF3"))})
+    """Build a Plotly time-series figure for robot power draw.
+
+    Args:
+        history (list[dict]): Telemetry sample dicts with ``"t"`` and
+            ``"power"`` (watts, derived from 48 V bus voltage × current).
+
+    Returns:
+        go.Figure: Area-filled scatter trace in amber, showing instantaneous
+            power in watts over time.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(text="Power Draw (W)", font=dict(size=12, color="#E6EDF3")),
+        }
+    )
     ts = [s["t"] for s in history]
-    fig.add_trace(go.Scatter(x=ts, y=[s["power"] for s in history], mode="lines",
-                             fill="tozeroy", name="Power",
-                             line=dict(color="#F8B739", width=2), fillcolor="rgba(248,183,57,0.15)"))
+    fig.add_trace(
+        go.Scatter(
+            x=ts,
+            y=[s["power"] for s in history],
+            mode="lines",
+            fill="tozeroy",
+            name="Power",
+            line=dict(color="#F8B739", width=2),
+            fillcolor="rgba(248,183,57,0.15)",
+        )
+    )
     return fig
 
 
 def make_energy_chart(history: list) -> go.Figure:
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Cumulative Energy (Wh)", font=dict(size=12, color="#E6EDF3"))})
+    """Build a Plotly time-series figure for cumulative energy consumption.
+
+    Args:
+        history (list[dict]): Telemetry sample dicts with ``"t"`` and
+            ``"energy"`` (Wh, accumulated by the telemetry loop via
+            power × dt integration).
+
+    Returns:
+        go.Figure: Area-filled scatter trace in teal showing energy consumed
+            since session start.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Cumulative Energy (Wh)", font=dict(size=12, color="#E6EDF3")
+            ),
+        }
+    )
     ts = [s["t"] for s in history]
-    fig.add_trace(go.Scatter(x=ts, y=[s["energy"] for s in history], mode="lines",
-                             fill="tozeroy", name="Energy",
-                             line=dict(color="#00D4AA", width=2), fillcolor="rgba(0,212,170,0.15)"))
+    fig.add_trace(
+        go.Scatter(
+            x=ts,
+            y=[s["energy"] for s in history],
+            mode="lines",
+            fill="tozeroy",
+            name="Energy",
+            line=dict(color="#00D4AA", width=2),
+            fillcolor="rgba(0,212,170,0.15)",
+        )
+    )
     return fig
 
 
 def make_temp_chart(history: list) -> go.Figure:
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Joint Temperatures (°C)", font=dict(size=12, color="#E6EDF3")),
-                            "yaxis": dict(title="", gridcolor="#1C2333", range=[25, 65])})
+    """Build a Plotly time-series figure for all 6 joint temperatures.
+
+    Adds a dashed warning line at 50 °C.  Y-axis is clamped to [25, 65] °C.
+
+    Args:
+        history (list[dict]): Telemetry sample dicts with ``"t"`` and
+            ``"temps"`` list of 6 joint temperatures in °C.
+
+    Returns:
+        go.Figure: Dark-themed Plotly scatter figure with per-joint traces
+            and an amber warning threshold annotation.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Joint Temperatures (°C)", font=dict(size=12, color="#E6EDF3")
+            ),
+            "yaxis": dict(title="", gridcolor="#1C2333", range=[25, 65]),
+        }
+    )
     ts = [s["t"] for s in history]
     for i, jn in enumerate(JOINT_LABELS):
-        fig.add_trace(go.Scatter(x=ts, y=[s["temps"][i] for s in history], mode="lines",
-                                 name=jn, line=dict(color=J_COLORS[i], width=1.5)))
-    fig.add_hline(y=50, line_dash="dash", line_color="#FBBF24", annotation_text="Warning",
-                  annotation_position="top right", annotation_font_size=9, annotation_font_color="#FBBF24")
+        fig.add_trace(
+            go.Scatter(
+                x=ts,
+                y=[s["temps"][i] for s in history],
+                mode="lines",
+                name=jn,
+                line=dict(color=J_COLORS[i], width=1.5),
+            )
+        )
+    fig.add_hline(
+        y=50,
+        line_dash="dash",
+        line_color="#FBBF24",
+        annotation_text="Warning",
+        annotation_position="top right",
+        annotation_font_size=9,
+        annotation_font_color="#FBBF24",
+    )
     return fig
 
 
 def make_safety_chart(history: list) -> go.Figure:
-    """Safety-relevant metrics over time, using only real RTDE data."""
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Safety & Motion Metrics", font=dict(size=12, color="#E6EDF3")),
-                            "yaxis": dict(title="", gridcolor="#1C2333")})
+    """Build a Plotly time-series figure for safety-critical motion metrics.
+
+    Overlays three traces on a shared Y axis:
+
+    * **Speed Scaling** (0–1, from ``getSpeedScaling``)
+    * **TCP Speed ×10** (m/s × 10 to share the 0–1 scale)
+    * **Max Tracking Error** (mrad, from actual minus target joint position)
+
+    Args:
+        history (list[dict]): Telemetry sample dicts with ``"t"``,
+            ``"speedScaling"``, ``"tcpSpeed"``, and ``"trackErr"``.
+
+    Returns:
+        go.Figure: Dark-themed multi-trace Plotly figure.
+    """
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Safety & Motion Metrics", font=dict(size=12, color="#E6EDF3")
+            ),
+            "yaxis": dict(title="", gridcolor="#1C2333"),
+        }
+    )
     ts = [s["t"] for s in history]
     # Speed scaling: 0-1 from getSpeedScaling (real)
-    fig.add_trace(go.Scatter(x=ts, y=[s["speedScaling"] for s in history], mode="lines",
-                             name="Speed Scaling", line=dict(color="#4895EF", width=2)))
+    fig.add_trace(
+        go.Scatter(
+            x=ts,
+            y=[s["speedScaling"] for s in history],
+            mode="lines",
+            name="Speed Scaling",
+            line=dict(color="#4895EF", width=2),
+        )
+    )
     # TCP Speed magnitude (m/s * 10 to share scale with speed scaling)
-    fig.add_trace(go.Scatter(x=ts, y=[s["tcpSpeed"] * 10 for s in history], mode="lines",
-                             name="TCP Speed ×10 (m/s)", line=dict(color="#00D4AA", width=2)))
+    fig.add_trace(
+        go.Scatter(
+            x=ts,
+            y=[s["tcpSpeed"] * 10 for s in history],
+            mode="lines",
+            name="TCP Speed ×10 (m/s)",
+            line=dict(color="#00D4AA", width=2),
+        )
+    )
     # Max joint tracking error magnitude in mrad (real, from actual - target position)
-    fig.add_trace(go.Scatter(x=ts,
-                             y=[max([abs(e) for e in s["trackErr"]]) * 1000 if s["trackErr"] else 0 for s in history],
-                             mode="lines",
-                             name="Max Tracking Err (mrad)", line=dict(color="#FBBF24", width=2)))
+    fig.add_trace(
+        go.Scatter(
+            x=ts,
+            y=[
+                max([abs(e) for e in s["trackErr"]]) * 1000 if s["trackErr"] else 0
+                for s in history
+            ],
+            mode="lines",
+            name="Max Tracking Err (mrad)",
+            line=dict(color="#FBBF24", width=2),
+        )
+    )
     return fig
 
 
 def make_torque_bar(sample: Dict) -> go.Figure:
+    """Build a Plotly horizontal bar chart showing per-joint torque utilisation.
+
+    Bars are coloured green/amber/red based on percentage of joint torque
+    capacity (thresholds: >50% amber, >80% red).
+
+    Args:
+        sample (dict): Single telemetry sample with ``"torque"`` list of 6
+            torque values in Nm.
+
+    Returns:
+        go.Figure: Horizontal bar chart with percentage labels and colour
+            thresholding relative to ``MAX_TORQUES``.
+    """
     pcts = [round(abs(sample["torque"][i]) / MAX_TORQUES[i] * 100, 1) for i in range(6)]
-    colors = ["#FF6B6B" if p > 80 else "#FBBF24" if p > 50 else J_COLORS[i] for i, p in enumerate(pcts)]
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Torque Utilization (%)", font=dict(size=12, color="#E6EDF3")),
-                            "xaxis": dict(range=[0, 100], title=""), "height": 220})
-    fig.add_trace(go.Bar(y=JOINT_LABELS, x=pcts, orientation="h", marker_color=colors,
-                         text=[f"{p}%" for p in pcts], textposition="auto"))
+    colors = [
+        "#FF6B6B" if p > 80 else "#FBBF24" if p > 50 else J_COLORS[i]
+        for i, p in enumerate(pcts)
+    ]
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Torque Utilization (%)", font=dict(size=12, color="#E6EDF3")
+            ),
+            "xaxis": dict(range=[0, 100], title=""),
+            "height": 220,
+        }
+    )
+    fig.add_trace(
+        go.Bar(
+            y=JOINT_LABELS,
+            x=pcts,
+            orientation="h",
+            marker_color=colors,
+            text=[f"{p}%" for p in pcts],
+            textposition="auto",
+        )
+    )
     return fig
 
 
 def make_tracking_error_chart(sample: Dict) -> go.Figure:
+    """Build a Plotly bar chart for per-joint tracking errors in milliradians.
+
+    Bars are coloured amber above 0.5 mrad and red above 1.0 mrad to
+    highlight joints diverging from their target trajectory.
+
+    Args:
+        sample (dict): Single telemetry sample with ``"trackErr"`` list of
+            6 errors in radians (actual minus target joint position).
+
+    Returns:
+        go.Figure: Vertical bar chart with numeric labels on each bar.
+    """
     errs = [round(abs(sample["trackErr"][i]) * 1000, 2) for i in range(6)]
-    colors = ["#FF6B6B" if e > 1.0 else "#FBBF24" if e > 0.5 else J_COLORS[i] for i, e in enumerate(errs)]
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Tracking Error (mrad)", font=dict(size=12, color="#E6EDF3")),
-                            "yaxis": dict(title="", gridcolor="#1C2333"), "height": 220})
-    fig.add_trace(go.Bar(x=JOINT_LABELS, y=errs, marker_color=colors,
-                         text=[f"{e:.2f}" for e in errs], textposition="auto",
-                         textfont=dict(color="#E6EDF3", size=10)))
+    colors = [
+        "#FF6B6B" if e > 1.0 else "#FBBF24" if e > 0.5 else J_COLORS[i]
+        for i, e in enumerate(errs)
+    ]
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(
+                text="Tracking Error (mrad)", font=dict(size=12, color="#E6EDF3")
+            ),
+            "yaxis": dict(title="", gridcolor="#1C2333"),
+            "height": 220,
+        }
+    )
+    fig.add_trace(
+        go.Bar(
+            x=JOINT_LABELS,
+            y=errs,
+            marker_color=colors,
+            text=[f"{e:.2f}" for e in errs],
+            textposition="auto",
+            textfont=dict(color="#E6EDF3", size=10),
+        )
+    )
     return fig
 
 
 def make_radar_chart(sample: Dict) -> go.Figure:
+    """Build a Plotly radar chart summarising position, velocity, and current per joint.
+
+    Three overlapping semi-transparent polar traces are plotted:
+
+    * **Position** — |q| / 2π × 100 (% of full rotation range)
+    * **Velocity** — |qd| / π × 100 (% of half-turn/s)
+    * **Current** — cur / 5 × 100 (% of 5 A full-scale)
+
+    Args:
+        sample (dict): Single telemetry sample with ``"q"``, ``"qd"``, and
+            ``"cur"`` lists of 6 values.
+
+    Returns:
+        go.Figure: Polar scatter figure with one trace per metric.
+    """
     cats = JOINT_LABELS + [JOINT_LABELS[0]]
-    pos = [abs(sample["q"][i]) / 6.28 * 100 for i in range(6)] + [abs(sample["q"][0]) / 6.28 * 100]
-    vel = [abs(sample["qd"][i]) / 3.14 * 100 for i in range(6)] + [abs(sample["qd"][0]) / 3.14 * 100]
+    pos = [abs(sample["q"][i]) / 6.28 * 100 for i in range(6)] + [
+        abs(sample["q"][0]) / 6.28 * 100
+    ]
+    vel = [abs(sample["qd"][i]) / 3.14 * 100 for i in range(6)] + [
+        abs(sample["qd"][0]) / 3.14 * 100
+    ]
     cur = [sample["cur"][i] / 5 * 100 for i in range(6)] + [sample["cur"][0] / 5 * 100]
-    fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Joint Radar", font=dict(size=12, color="#E6EDF3")),
-                            "polar": dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, range=[0, 100], gridcolor="#1C2333", tickfont=dict(color="#8B949E")), angularaxis=dict(gridcolor="#1C2333", tickfont=dict(color="#8B949E"))), "height": 240})
-    fig.add_trace(go.Scatterpolar(r=pos, theta=cats, fill="toself", name="Position", opacity=0.4, line_color="#00D4AA"))
-    fig.add_trace(go.Scatterpolar(r=vel, theta=cats, fill="toself", name="Velocity", opacity=0.3, line_color="#4895EF"))
-    fig.add_trace(go.Scatterpolar(r=cur, theta=cats, fill="toself", name="Current", opacity=0.2, line_color="#FF6B6B"))
+    fig = go.Figure(
+        layout={
+            **PLOTLY_LAYOUT_BASE,
+            "title": dict(text="Joint Radar", font=dict(size=12, color="#E6EDF3")),
+            "polar": dict(
+                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 100],
+                    gridcolor="#1C2333",
+                    tickfont=dict(color="#8B949E"),
+                ),
+                angularaxis=dict(gridcolor="#1C2333", tickfont=dict(color="#8B949E")),
+            ),
+            "height": 240,
+        }
+    )
+    fig.add_trace(
+        go.Scatterpolar(
+            r=pos,
+            theta=cats,
+            fill="toself",
+            name="Position",
+            opacity=0.4,
+            line_color="#00D4AA",
+        )
+    )
+    fig.add_trace(
+        go.Scatterpolar(
+            r=vel,
+            theta=cats,
+            fill="toself",
+            name="Velocity",
+            opacity=0.3,
+            line_color="#4895EF",
+        )
+    )
+    fig.add_trace(
+        go.Scatterpolar(
+            r=cur,
+            theta=cats,
+            fill="toself",
+            name="Current",
+            opacity=0.2,
+            line_color="#FF6B6B",
+        )
+    )
     return fig
 
 
-def make_gauge(value, title, max_val, color="#4895EF", warn=None, crit=None) -> go.Figure:
-    bar_color = "#FF6B6B" if (crit and value >= crit) else "#FBBF24" if (warn and value >= warn) else color
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=value, title=dict(text=title, font=dict(size=11, color="#C9D1D9")),
-        number=dict(font=dict(size=18, color="#E6EDF3")),
-        gauge=dict(
-            axis=dict(range=[0, max_val], tickfont=dict(size=8, color="#8B949E"), tickcolor="#30363D"),
-            bar=dict(color=bar_color),
-            bgcolor="#0D1117",
-            borderwidth=0,
-            steps=[
-                dict(range=[0, max_val * 0.5], color="rgba(0,212,170,0.08)"),
-                dict(range=[max_val * 0.5, max_val * 0.8], color="rgba(251,191,36,0.10)" if warn else "rgba(0,212,170,0.08)"),
-                dict(range=[max_val * 0.8, max_val], color="rgba(255,107,107,0.12)" if crit else "rgba(0,212,170,0.08)"),
-            ],
-            threshold=dict(line=dict(color="#FF6B6B", width=2), thickness=0.75, value=crit if crit else max_val) if crit else None,
-        ),
-    ))
-    fig.update_layout(margin=dict(l=20, r=20, t=40, b=10), height=160, paper_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#C9D1D9"))
+def make_gauge(
+    value, title, max_val, color="#4895EF", warn=None, crit=None
+) -> go.Figure:
+    """Build a Plotly gauge indicator figure with optional warning and critical thresholds.
+
+    The gauge arc is divided into three colour zones: normal (0–50%), warning
+    (50–80%), and critical (80–100% of *max_val*).  The needle bar colour
+    also shifts to amber or red when *value* crosses the thresholds.
+
+    Args:
+        value (float): Current reading to display on the gauge.
+        title (str): Label shown above the gauge needle.
+        max_val (float): Maximum value of the gauge scale.
+        color (str): Hex colour for the bar when below warning threshold.
+            Defaults to ``"#4895EF"`` (blue).
+        warn (float | None): Value at which the bar turns amber.  If
+            ``None``, no warning colouring is applied.
+        crit (float | None): Value at which the bar turns red and a
+            threshold line is drawn.  If ``None``, no critical line is shown.
+
+    Returns:
+        go.Figure: Compact (160 px tall) Plotly indicator figure.
+    """
+    bar_color = (
+        "#FF6B6B"
+        if (crit and value >= crit)
+        else "#FBBF24"
+        if (warn and value >= warn)
+        else color
+    )
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=value,
+            title=dict(text=title, font=dict(size=11, color="#C9D1D9")),
+            number=dict(font=dict(size=18, color="#E6EDF3")),
+            gauge=dict(
+                axis=dict(
+                    range=[0, max_val],
+                    tickfont=dict(size=8, color="#8B949E"),
+                    tickcolor="#30363D",
+                ),
+                bar=dict(color=bar_color),
+                bgcolor="#0D1117",
+                borderwidth=0,
+                steps=[
+                    dict(range=[0, max_val * 0.5], color="rgba(0,212,170,0.08)"),
+                    dict(
+                        range=[max_val * 0.5, max_val * 0.8],
+                        color="rgba(251,191,36,0.10)"
+                        if warn
+                        else "rgba(0,212,170,0.08)",
+                    ),
+                    dict(
+                        range=[max_val * 0.8, max_val],
+                        color="rgba(255,107,107,0.12)"
+                        if crit
+                        else "rgba(0,212,170,0.08)",
+                    ),
+                ],
+                threshold=dict(
+                    line=dict(color="#FF6B6B", width=2),
+                    thickness=0.75,
+                    value=crit if crit else max_val,
+                )
+                if crit
+                else None,
+            ),
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=20, r=20, t=40, b=10),
+        height=160,
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#C9D1D9"),
+    )
     return fig
 
 
@@ -2208,7 +3216,31 @@ function toggleFullscreen(el) {
 
 
 def build_dashboard(state: AppState):
-    """Build the NiceGUI dashboard page."""
+    """Build and register the complete NiceGUI dashboard UI for a single browser session.
+
+    Injects global CSS and JavaScript, constructs the header with live badges
+    and elapsed timer, then builds seven tab panels:
+
+    * **Overview** — KPI cards, gauges, summary charts.
+    * **Joint Analysis** — position/velocity time-series, torque bar, tracking
+      error bar, radar chart, and a joint-state table.
+    * **TCP & Force** — TCP pose KPIs, force/torque chart, force-magnitude
+      gauge, TCP speed chart.
+    * **Power & Thermal** — power/energy charts, temperature time-series and
+      bar chart, power KPIs.
+    * **Safety & Status** — event counters, safety gauges, safety metric
+      chart, safety/robot status bit panels.
+    * **Robot Control** — emergency stop, joint jog, Cartesian jog, move
+      command, I/O control, speed slider, freedrive, program control.
+    * **Digital Twin** — Isaac Sim viewport, RealSense camera feeds, live
+      telemetry panel with ack-buttons.
+
+    Registers a 0.5 s ``ui.timer`` that refreshes all live elements at ~2 Hz.
+
+    Args:
+        state (AppState): Shared application state providing the telemetry
+            history, robot interface, and camera capture.
+    """
 
     # ── Inject custom styles and fullscreen JS ──
     ui.add_head_html(f"<style>{CSS}</style>")
@@ -2221,61 +3253,89 @@ def build_dashboard(state: AppState):
     ):
         with ui.column().style("gap: 2px"):
             ui.label("UR5e RTDE Monitoring Dashboard").style(
-                "font-size: 17px; font-weight: 700; color: white; letter-spacing: 0.5px")
+                "font-size: 17px; font-weight: 700; color: white; letter-spacing: 0.5px"
+            )
             with ui.row().style("gap: 12px; align-items: center"):
                 ui.label("Real-Time Data Exchange — 270 Parameters").style(
-                    "font-size: 11px; color: #8B949E; letter-spacing: 0.3px")
+                    "font-size: 11px; color: #8B949E; letter-spacing: 0.3px"
+                )
                 mode_badge = ui.label("● DEMO").style(
                     "padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;"
-                    "background: #FBBF2430; color: #FBBF24;")
+                    "background: #FBBF2430; color: #FBBF24;"
+                )
 
         with ui.row().style("gap: 10px; align-items: center"):
             robot_badge = ui.label("UNKNOWN").style(
                 "padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;"
-                "background: rgba(251,191,36,0.08); color: var(--text); border: 1px solid rgba(251,191,36,0.2);")
+                "background: rgba(251,191,36,0.08); color: var(--text); border: 1px solid rgba(251,191,36,0.2);"
+            )
             safety_badge = ui.label("UNKNOWN").style(
                 "padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;"
-                "background: rgba(0,212,170,0.08); color: var(--text); border: 1px solid rgba(0,212,170,0.2);")
+                "background: rgba(0,212,170,0.08); color: var(--text); border: 1px solid rgba(0,212,170,0.2);"
+            )
             elapsed_label = ui.label("0:00").style(
                 "padding: 8px 14px; border-radius: 8px; font-size: 15px; font-weight: 700;"
                 "font-family: 'JetBrains Mono', monospace; color: white;"
-                "background: rgba(72,149,239,0.15); border: 1px solid rgba(72,149,239,0.3);")
+                "background: rgba(72,149,239,0.15); border: 1px solid rgba(72,149,239,0.3);"
+            )
 
     # ── TABS ──
-    with ui.tabs().classes("w-full").style("background: #111827; border-bottom: 1px solid #1E293B; padding: 0 24px;") as tabs:
-        tab_overview  = ui.tab("Overview")
-        tab_joints    = ui.tab("Joint Analysis")
-        tab_tcp       = ui.tab("TCP & Force")
-        tab_power     = ui.tab("Power & Thermal")
-        tab_safety    = ui.tab("Safety & Status")
-        tab_control   = ui.tab("Robot Control")
-        tab_twin      = ui.tab("Digital Twin")
+    with (
+        ui.tabs()
+        .classes("w-full")
+        .style(
+            "background: #111827; border-bottom: 1px solid #1E293B; padding: 0 24px;"
+        ) as tabs
+    ):
+        tab_overview = ui.tab("Overview")
+        tab_joints = ui.tab("Joint Analysis")
+        tab_tcp = ui.tab("TCP & Force")
+        tab_power = ui.tab("Power & Thermal")
+        tab_safety = ui.tab("Safety & Status")
+        tab_control = ui.tab("Robot Control")
+        tab_twin = ui.tab("Digital Twin")
 
     # ── CONTENT PANELS ──
-    with ui.tab_panels(tabs, value=tab_overview).classes("w-full").style(
-            "max-width: 1440px; margin: 0 auto; padding: 16px 24px; background: transparent;"):
-
+    with (
+        ui.tab_panels(tabs, value=tab_overview)
+        .classes("w-full")
+        .style(
+            "max-width: 1440px; margin: 0 auto; padding: 16px 24px; background: transparent;"
+        )
+    ):
         # ═══════════════════════════════════════════════════════════════
         #  TAB 0: OVERVIEW
         # ═══════════════════════════════════════════════════════════════
         with ui.tab_panel(tab_overview):
             with ui.row().classes("w-full").style("gap: 12px; flex-wrap: wrap"):
-                kpi_speed  = _kpi("TCP Speed",  "—", "m/s")
-                kpi_force  = _kpi("Force",      "—", "N")
-                kpi_power  = _kpi("Power Draw", "—", "W")
-                kpi_temp   = _kpi("Max Temp",   "—", "°C")
-                kpi_energy = _kpi("Energy",     "—", "Wh")
-                kpi_vib    = _kpi("Vibration",  "—", "m/s²")
+                kpi_speed = _kpi("TCP Speed", "—", "m/s")
+                kpi_force = _kpi("Force", "—", "N")
+                kpi_power = _kpi("Power Draw", "—", "W")
+                kpi_temp = _kpi("Max Temp", "—", "°C")
+                kpi_energy = _kpi("Energy", "—", "Wh")
+                kpi_vib = _kpi("Vibration", "—", "m/s²")
 
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
-                gauge_scaling   = ui.plotly(make_gauge(0, "Speed Scaling", 1, "#4895EF")).classes("flex-1")
-                gauge_current   = ui.plotly(make_gauge(0, "Robot Current", 10, "#00D4AA", 7, 9)).classes("flex-1")
-                gauge_maxtemp   = ui.plotly(make_gauge(0, "Max Joint Temp", 80, "#4895EF", 50, 70)).classes("flex-1")
-                gauge_momentum  = ui.plotly(make_gauge(0, "Momentum", 25, "#7B61FF", 15, 20)).classes("flex-1")
-                gauge_payload   = ui.plotly(make_gauge(0, "Payload", 5, "#4895EF", 4.5, 5.0)).classes("flex-1")
+                gauge_scaling = ui.plotly(
+                    make_gauge(0, "Speed Scaling", 1, "#4895EF")
+                ).classes("flex-1")
+                gauge_current = ui.plotly(
+                    make_gauge(0, "Robot Current", 10, "#00D4AA", 7, 9)
+                ).classes("flex-1")
+                gauge_maxtemp = ui.plotly(
+                    make_gauge(0, "Max Joint Temp", 80, "#4895EF", 50, 70)
+                ).classes("flex-1")
+                gauge_momentum = ui.plotly(
+                    make_gauge(0, "Momentum", 25, "#7B61FF", 15, 20)
+                ).classes("flex-1")
+                gauge_payload = ui.plotly(
+                    make_gauge(0, "Payload", 5, "#4895EF", 4.5, 5.0)
+                ).classes("flex-1")
 
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
-                chart_jpos_overview = ui.plotly(make_joint_pos_chart([])).classes("flex-1")
+                chart_jpos_overview = ui.plotly(make_joint_pos_chart([])).classes(
+                    "flex-1"
+                )
                 chart_force_overview = ui.plotly(make_force_chart([])).classes("flex-1")
 
         # ═══════════════════════════════════════════════════════════════
@@ -2286,25 +3346,76 @@ def build_dashboard(state: AppState):
                 chart_jpos = ui.plotly(make_joint_pos_chart([])).classes("flex-1")
                 chart_jvel = ui.plotly(make_joint_vel_chart([])).classes("flex-1")
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
-                chart_torque_bar = ui.plotly(make_torque_bar(generate_demo(0))).classes("flex-1")
-                chart_track_err = ui.plotly(make_tracking_error_chart(generate_demo(0))).classes("flex-1")
-                chart_radar = ui.plotly(make_radar_chart(generate_demo(0))).classes("flex-1")
+                chart_torque_bar = ui.plotly(make_torque_bar(generate_demo(0))).classes(
+                    "flex-1"
+                )
+                chart_track_err = ui.plotly(
+                    make_tracking_error_chart(generate_demo(0))
+                ).classes("flex-1")
+                chart_radar = ui.plotly(make_radar_chart(generate_demo(0))).classes(
+                    "flex-1"
+                )
 
             # Joint state table
             with ui.element("div").classes("section-card").style("margin-top: 12px"):
                 ui.label("Current Joint State").classes("section-header")
                 joint_table = ui.table(
                     columns=[
-                        {"name": "joint", "label": "Joint", "field": "joint", "align": "left"},
-                        {"name": "pos", "label": "Position (rad)", "field": "pos", "align": "right"},
-                        {"name": "vel", "label": "Velocity (rad/s)", "field": "vel", "align": "right"},
-                        {"name": "cur", "label": "Current (A)", "field": "cur", "align": "right"},
-                        {"name": "torque", "label": "Torque (Nm)", "field": "torque", "align": "right"},
-                        {"name": "temp", "label": "Temp (°C)", "field": "temp", "align": "right"},
-                        {"name": "err", "label": "Track Err (mrad)", "field": "err", "align": "right"},
+                        {
+                            "name": "joint",
+                            "label": "Joint",
+                            "field": "joint",
+                            "align": "left",
+                        },
+                        {
+                            "name": "pos",
+                            "label": "Position (rad)",
+                            "field": "pos",
+                            "align": "right",
+                        },
+                        {
+                            "name": "vel",
+                            "label": "Velocity (rad/s)",
+                            "field": "vel",
+                            "align": "right",
+                        },
+                        {
+                            "name": "cur",
+                            "label": "Current (A)",
+                            "field": "cur",
+                            "align": "right",
+                        },
+                        {
+                            "name": "torque",
+                            "label": "Torque (Nm)",
+                            "field": "torque",
+                            "align": "right",
+                        },
+                        {
+                            "name": "temp",
+                            "label": "Temp (°C)",
+                            "field": "temp",
+                            "align": "right",
+                        },
+                        {
+                            "name": "err",
+                            "label": "Track Err (mrad)",
+                            "field": "err",
+                            "align": "right",
+                        },
                     ],
-                    rows=[{"joint": JOINT_LABELS[i], "pos": "—", "vel": "—", "cur": "—",
-                           "torque": "—", "temp": "—", "err": "—"} for i in range(6)],
+                    rows=[
+                        {
+                            "joint": JOINT_LABELS[i],
+                            "pos": "—",
+                            "vel": "—",
+                            "cur": "—",
+                            "torque": "—",
+                            "temp": "—",
+                            "err": "—",
+                        }
+                        for i in range(6)
+                    ],
                 ).style("width: 100%")
 
         # ═══════════════════════════════════════════════════════════════
@@ -2314,31 +3425,53 @@ def build_dashboard(state: AppState):
             tcp_kpi_labels = {}
             with ui.row().classes("w-full").style("gap: 12px"):
                 for a in ["x", "y", "z", "rx", "ry", "rz"]:
-                    tcp_kpi_labels[a] = _kpi(f"TCP {a.upper()}", "—", "m" if a in "xyz" else "rad")
+                    tcp_kpi_labels[a] = _kpi(
+                        f"TCP {a.upper()}", "—", "m" if a in "xyz" else "rad"
+                    )
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
                 chart_force_detail = ui.plotly(make_force_chart([])).classes("flex-[2]")
-                gauge_force_scalar = ui.plotly(make_gauge(0, "Force Magnitude", 150, "#FF6B6B", 80, 120)).classes("flex-1")
+                gauge_force_scalar = ui.plotly(
+                    make_gauge(0, "Force Magnitude", 150, "#FF6B6B", 80, 120)
+                ).classes("flex-1")
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
-                chart_tcp_speed = ui.plotly(go.Figure(layout={**PLOTLY_LAYOUT_BASE,
-                    "title": dict(text="TCP Speed (m/s)", font=dict(size=12, color="#E6EDF3"))})).classes("flex-1")
+                chart_tcp_speed = ui.plotly(
+                    go.Figure(
+                        layout={
+                            **PLOTLY_LAYOUT_BASE,
+                            "title": dict(
+                                text="TCP Speed (m/s)",
+                                font=dict(size=12, color="#E6EDF3"),
+                            ),
+                        }
+                    )
+                ).classes("flex-1")
 
         # ═══════════════════════════════════════════════════════════════
         #  TAB 3: POWER & THERMAL
         # ═══════════════════════════════════════════════════════════════
         with ui.tab_panel(tab_power):
             with ui.row().classes("w-full").style("gap: 12px"):
-                kpi_v48   = _kpi("48V Bus",     "—", "V")
-                kpi_ibot  = _kpi("Robot Current","—", "A")
-                kpi_pow2  = _kpi("Power",       "—", "W")
-                kpi_en2   = _kpi("Energy",      "—", "Wh")
-                kpi_mom2  = _kpi("Momentum",    "—", "kg·m/s")
+                kpi_v48 = _kpi("48V Bus", "—", "V")
+                kpi_ibot = _kpi("Robot Current", "—", "A")
+                kpi_pow2 = _kpi("Power", "—", "W")
+                kpi_en2 = _kpi("Energy", "—", "Wh")
+                kpi_mom2 = _kpi("Momentum", "—", "kg·m/s")
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
                 chart_power = ui.plotly(make_power_chart([])).classes("flex-1")
                 chart_energy = ui.plotly(make_energy_chart([])).classes("flex-1")
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
                 chart_temp = ui.plotly(make_temp_chart([])).classes("flex-[2]")
-                chart_temp_bar = ui.plotly(go.Figure(layout={**PLOTLY_LAYOUT_BASE,
-                    "title": dict(text="Current Temperature (°C)", font=dict(size=12, color="#E6EDF3"))})).classes("flex-1")
+                chart_temp_bar = ui.plotly(
+                    go.Figure(
+                        layout={
+                            **PLOTLY_LAYOUT_BASE,
+                            "title": dict(
+                                text="Current Temperature (°C)",
+                                font=dict(size=12, color="#E6EDF3"),
+                            ),
+                        }
+                    )
+                ).classes("flex-1")
 
         # ═══════════════════════════════════════════════════════════════
         #  TAB 4: SAFETY & STATUS
@@ -2347,13 +3480,19 @@ def build_dashboard(state: AppState):
             with ui.row().classes("w-full").style("gap: 12px"):
                 kpi_pstop = _kpi("Protective Stops", "0", "events")
                 kpi_estop = _kpi("Emergency Stops", "0", "events")
-                kpi_viol  = _kpi("Violations", "0", "events")
-                kpi_scl   = _kpi("Speed Scaling", "—", "")
+                kpi_viol = _kpi("Violations", "0", "events")
+                kpi_scl = _kpi("Speed Scaling", "—", "")
 
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
-                gauge_maxcur2    = ui.plotly(make_gauge(0, "Max Joint Current", 5, "#00D4AA", 3, 4.5)).classes("flex-1")
-                gauge_maxtemp2   = ui.plotly(make_gauge(0, "Max Joint Temp", 80, "#4895EF", 50, 70)).classes("flex-1")
-                gauge_momentum2  = ui.plotly(make_gauge(0, "Momentum", 25, "#7B61FF", 15, 20)).classes("flex-1")
+                gauge_maxcur2 = ui.plotly(
+                    make_gauge(0, "Max Joint Current", 5, "#00D4AA", 3, 4.5)
+                ).classes("flex-1")
+                gauge_maxtemp2 = ui.plotly(
+                    make_gauge(0, "Max Joint Temp", 80, "#4895EF", 50, 70)
+                ).classes("flex-1")
+                gauge_momentum2 = ui.plotly(
+                    make_gauge(0, "Momentum", 25, "#7B61FF", 15, 20)
+                ).classes("flex-1")
 
             with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
                 chart_safety = ui.plotly(make_safety_chart([])).classes("flex-1")
@@ -2371,27 +3510,46 @@ def build_dashboard(state: AppState):
         with ui.tab_panel(tab_control):
             # Emergency stop bar
             with ui.row().classes("w-full").style("gap: 12px; align-items: stretch"):
+
                 async def _estop_main():
                     await run.io_bound(state.send_command, "stopJ", {})
                     await run.io_bound(state.send_command, "stopScript", {})
+
                 ui.button("⚠ EMERGENCY STOP", on_click=_estop_main).style(
                     "flex: 0 0 200px; padding: 16px 24px; font-size: 16px; font-weight: 800;"
                     "color: white; background: linear-gradient(135deg, #DC2626, #EF4444);"
                     "border: 3px solid #991B1B; border-radius: 12px; letter-spacing: 1px;"
-                    "box-shadow: 0 4px 20px rgba(220,38,38,0.4);")
+                    "box-shadow: 0 4px 20px rgba(220,38,38,0.4);"
+                )
 
                 with ui.row().style("flex: 1; gap: 8px; flex-wrap: wrap"):
-                    _ctrl_btn("⚡ Power On",     lambda: state.send_command("powerOn"),             "#00D4AA")
-                    _ctrl_btn("⏻ Power Off",     lambda: state.send_command("powerOff"),            "#6E7681")
-                    _ctrl_btn("🔓 Brake Release", lambda: state.send_command("brakeRelease"),       "#4895EF")
-                    _ctrl_btn("🔑 Unlock P-Stop", lambda: state.send_command("unlockProtectiveStop"), "#FBBF24")
-                    _ctrl_btn("🔄 Restart Safety", lambda: state.send_command("restartSafety"),     "#7B61FF")
+                    _ctrl_btn(
+                        "⚡ Power On", lambda: state.send_command("powerOn"), "#00D4AA"
+                    )
+                    _ctrl_btn(
+                        "⏻ Power Off", lambda: state.send_command("powerOff"), "#6E7681"
+                    )
+                    _ctrl_btn(
+                        "🔓 Brake Release",
+                        lambda: state.send_command("brakeRelease"),
+                        "#4895EF",
+                    )
+                    _ctrl_btn(
+                        "🔑 Unlock P-Stop",
+                        lambda: state.send_command("unlockProtectiveStop"),
+                        "#FBBF24",
+                    )
+                    _ctrl_btn(
+                        "🔄 Restart Safety",
+                        lambda: state.send_command("restartSafety"),
+                        "#7B61FF",
+                    )
 
             # Control sub-tabs
             with ui.tabs().classes("w-full").style("margin-top: 12px") as ctrl_tabs:
-                ctrl_tab_jog  = ui.tab("Jog & Move")
-                ctrl_tab_io   = ui.tab("I/O Control")
-                ctrl_tab_set  = ui.tab("Settings & Tools")
+                ctrl_tab_jog = ui.tab("Jog & Move")
+                ctrl_tab_io = ui.tab("I/O Control")
+                ctrl_tab_set = ui.tab("Settings & Tools")
 
             # ── Live State Summary (TCP + Speed + Force) ──
             with ui.row().classes("w-full").style("gap: 8px; margin-top: 12px"):
@@ -2399,84 +3557,188 @@ def build_dashboard(state: AppState):
                 for a in ["x", "y", "z", "rx", "ry", "rz"]:
                     with ui.element("div").style(
                         "flex: 1; padding: 8px 10px; background: #111827; border-radius: 8px;"
-                        "border: 1px solid #1E293B; text-align: center;"):
+                        "border: 1px solid #1E293B; text-align: center;"
+                    ):
                         ui.label(f"TCP {a.upper()}").style(
-                            "font-size: 9px; color: #8B949E; text-transform: uppercase; letter-spacing: 0.5px")
+                            "font-size: 9px; color: #8B949E; text-transform: uppercase; letter-spacing: 0.5px"
+                        )
                         ctrl_tcp_labels[a] = ui.label("—").style(
-                            "font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #E6EDF3")
-                        ui.label("m" if a in "xyz" else "rad").style("font-size: 9px; color: #6E7681")
+                            "font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #E6EDF3"
+                        )
+                        ui.label("m" if a in "xyz" else "rad").style(
+                            "font-size: 9px; color: #6E7681"
+                        )
                 with ui.element("div").style(
                     "flex: 1; padding: 8px 10px; background: #fff; border-radius: 8px;"
-                    "border: 1px solid #e4e9f0; text-align: center;"):
-                    ui.label("SPEED").style("font-size: 9px; color: #8B949E; text-transform: uppercase; letter-spacing: 0.5px")
+                    "border: 1px solid #e4e9f0; text-align: center;"
+                ):
+                    ui.label("SPEED").style(
+                        "font-size: 9px; color: #8B949E; text-transform: uppercase; letter-spacing: 0.5px"
+                    )
                     ctrl_speed_label = ui.label("—").style(
-                        "font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #E6EDF3")
+                        "font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #E6EDF3"
+                    )
                     ui.label("m/s").style("font-size: 9px; color: #6E7681")
                 with ui.element("div").style(
                     "flex: 1; padding: 8px 10px; background: #fff; border-radius: 8px;"
-                    "border: 1px solid #e4e9f0; text-align: center;"):
-                    ui.label("FORCE").style("font-size: 9px; color: #8B949E; text-transform: uppercase; letter-spacing: 0.5px")
+                    "border: 1px solid #e4e9f0; text-align: center;"
+                ):
+                    ui.label("FORCE").style(
+                        "font-size: 9px; color: #8B949E; text-transform: uppercase; letter-spacing: 0.5px"
+                    )
                     ctrl_force_label = ui.label("—").style(
-                        "font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #E6EDF3")
+                        "font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #E6EDF3"
+                    )
                     ui.label("N").style("font-size: 9px; color: #6E7681")
 
             with ui.tab_panels(ctrl_tabs, value=ctrl_tab_jog).classes("w-full"):
-
                 # ── Jog & Move ──
                 with ui.tab_panel(ctrl_tab_jog):
                     with ui.row().classes("w-full").style("gap: 12px"):
-
                         # Joint Jog
                         with ui.element("div").classes("section-card flex-1"):
                             ui.label("🦾 Joint Jog").classes("section-header")
                             with ui.column().style("padding: 16px; gap: 8px"):
                                 with ui.row().style("gap: 12px"):
-                                    jog_speed_input = ui.number("Jog Speed (rad/s)", value=0.1, min=0.01, max=3.14, step=0.01).style("width: 140px")
-                                    jog_accel_input = ui.number("Acceleration (rad/s²)", value=0.5, min=0.1, max=5.0, step=0.1).style("width: 160px")
+                                    jog_speed_input = ui.number(
+                                        "Jog Speed (rad/s)",
+                                        value=0.1,
+                                        min=0.01,
+                                        max=3.14,
+                                        step=0.01,
+                                    ).style("width: 140px")
+                                    jog_accel_input = ui.number(
+                                        "Acceleration (rad/s²)",
+                                        value=0.5,
+                                        min=0.1,
+                                        max=5.0,
+                                        step=0.1,
+                                    ).style("width: 160px")
                                 jog_pos_label_refs = []
                                 for i, jn in enumerate(JOINT_LABELS):
-                                    with ui.row().style("align-items: center; gap: 8px"):
-                                        ui.label(jn).style(f"width: 70px; font-weight: 600; color: {J_COLORS[i]}; font-size: 12px")
-                                        _jog_btn("−", state, i, -1, jog_speed_input, jog_accel_input)
+                                    with ui.row().style(
+                                        "align-items: center; gap: 8px"
+                                    ):
+                                        ui.label(jn).style(
+                                            f"width: 70px; font-weight: 600; color: {J_COLORS[i]}; font-size: 12px"
+                                        )
+                                        _jog_btn(
+                                            "−",
+                                            state,
+                                            i,
+                                            -1,
+                                            jog_speed_input,
+                                            jog_accel_input,
+                                        )
                                         jpl = ui.label("0.0000 rad").style(
-                                            "flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px")
+                                            "flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px"
+                                        )
                                         jog_pos_label_refs.append(jpl)
-                                        _jog_btn("+", state, i, 1, jog_speed_input, jog_accel_input)
+                                        _jog_btn(
+                                            "+",
+                                            state,
+                                            i,
+                                            1,
+                                            jog_speed_input,
+                                            jog_accel_input,
+                                        )
 
                         # Cartesian Jog
                         with ui.element("div").classes("section-card flex-1"):
                             ui.label("🎯 Cartesian Jog").classes("section-header")
                             with ui.column().style("padding: 16px; gap: 8px"):
                                 with ui.row().style("gap: 12px"):
-                                    cart_speed_input = ui.number("Speed (m/s)", value=0.1, min=0.001, max=0.5, step=0.001).style("width: 120px")
-                                    cart_accel_input = ui.number("Accel (m/s²)", value=0.5, min=0.1, max=5.0, step=0.1).style("width: 120px")
+                                    cart_speed_input = ui.number(
+                                        "Speed (m/s)",
+                                        value=0.1,
+                                        min=0.001,
+                                        max=0.5,
+                                        step=0.001,
+                                    ).style("width: 120px")
+                                    cart_accel_input = ui.number(
+                                        "Accel (m/s²)",
+                                        value=0.5,
+                                        min=0.1,
+                                        max=5.0,
+                                        step=0.1,
+                                    ).style("width: 120px")
                                 cart_pos_label_refs = []
-                                for i, ax in enumerate(["X", "Y", "Z", "Rx", "Ry", "Rz"]):
+                                for i, ax in enumerate(
+                                    ["X", "Y", "Z", "Rx", "Ry", "Rz"]
+                                ):
                                     color = "#4895EF" if i < 3 else "#7B61FF"
-                                    with ui.row().style("align-items: center; gap: 8px"):
-                                        ui.label(ax).style(f"width: 30px; font-weight: 700; color: {color};"
-                                                          "font-family: 'JetBrains Mono', monospace; font-size: 12px")
-                                        _cart_jog_btn("−", state, i, -1, cart_speed_input, cart_accel_input)
+                                    with ui.row().style(
+                                        "align-items: center; gap: 8px"
+                                    ):
+                                        ui.label(ax).style(
+                                            f"width: 30px; font-weight: 700; color: {color};"
+                                            "font-family: 'JetBrains Mono', monospace; font-size: 12px"
+                                        )
+                                        _cart_jog_btn(
+                                            "−",
+                                            state,
+                                            i,
+                                            -1,
+                                            cart_speed_input,
+                                            cart_accel_input,
+                                        )
                                         cpl = ui.label("0.0000").style(
-                                            "flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px")
+                                            "flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px"
+                                        )
                                         cart_pos_label_refs.append(cpl)
-                                        _cart_jog_btn("+", state, i, 1, cart_speed_input, cart_accel_input)
+                                        _cart_jog_btn(
+                                            "+",
+                                            state,
+                                            i,
+                                            1,
+                                            cart_speed_input,
+                                            cart_accel_input,
+                                        )
 
                     # Move Command
-                    with ui.element("div").classes("section-card").style("margin-top: 12px"):
+                    with (
+                        ui.element("div")
+                        .classes("section-card")
+                        .style("margin-top: 12px")
+                    ):
                         ui.label("📍 Move Command").classes("section-header")
-                        with ui.row().style("padding: 16px; gap: 12px; align-items: flex-end; flex-wrap: wrap"):
-                            move_mode = ui.toggle(["moveJ", "moveL"], value="moveJ").style("font-family: 'JetBrains Mono', monospace")
-                            move_speed = ui.number("Speed", value=0.5, step=0.01).style("width: 80px")
-                            move_accel = ui.number("Accel", value=1.0, step=0.1).style("width: 80px")
-                            move_targets = [ui.number(JOINT_LABELS[i] if True else ["X","Y","Z","Rx","Ry","Rz"][i],
-                                                      value=[-0.0, -1.57, 0, 0, 1.57, 0][i], step=0.001).style("width: 80px")
-                                           for i in range(6)]
+                        with ui.row().style(
+                            "padding: 16px; gap: 12px; align-items: flex-end; flex-wrap: wrap"
+                        ):
+                            move_mode = ui.toggle(
+                                ["moveJ", "moveL"], value="moveJ"
+                            ).style("font-family: 'JetBrains Mono', monospace")
+                            move_speed = ui.number("Speed", value=0.5, step=0.01).style(
+                                "width: 80px"
+                            )
+                            move_accel = ui.number("Accel", value=1.0, step=0.1).style(
+                                "width: 80px"
+                            )
+                            move_targets = [
+                                ui.number(
+                                    JOINT_LABELS[i]
+                                    if True
+                                    else ["X", "Y", "Z", "Rx", "Ry", "Rz"][i],
+                                    value=[-0.0, -1.57, 0, 0, 1.57, 0][i],
+                                    step=0.001,
+                                ).style("width: 80px")
+                                for i in range(6)
+                            ]
+
                             async def _exec_move():
-                                await run.io_bound(state.send_command,
-                                    move_mode.value, {"target": [mt.value for mt in move_targets],
-                                                      "speed": move_speed.value, "acceleration": move_accel.value})
-                            ui.button("▶ Execute", on_click=_exec_move).style("background: #00D4AA; color: #0B1120; font-weight: 600")
+                                await run.io_bound(
+                                    state.send_command,
+                                    move_mode.value,
+                                    {
+                                        "target": [mt.value for mt in move_targets],
+                                        "speed": move_speed.value,
+                                        "acceleration": move_accel.value,
+                                    },
+                                )
+
+                            ui.button("▶ Execute", on_click=_exec_move).style(
+                                "background: #00D4AA; color: #0B1120; font-weight: 600"
+                            )
 
                             def _copy_current():
                                 s = state.sample
@@ -2488,69 +3750,143 @@ def build_dashboard(state: AppState):
                                 else:
                                     axes = ["x", "y", "z", "rx", "ry", "rz"]
                                     for i in range(6):
-                                        move_targets[i].value = round(s["tcp"].get(axes[i], 0), 4)
+                                        move_targets[i].value = round(
+                                            s["tcp"].get(axes[i], 0), 4
+                                        )
                                 move_targets[0].update()  # trigger UI refresh
-                                state._log_event(datetime.now().strftime("%H:%M:%S"), "Copied current position to target", "info")
+                                state._log_event(
+                                    datetime.now().strftime("%H:%M:%S"),
+                                    "Copied current position to target",
+                                    "info",
+                                )
 
                             ui.button("📋 Copy Current", on_click=_copy_current).style(
-                                "background: #6E7681; color: white; font-weight: 600")
+                                "background: #6E7681; color: white; font-weight: 600"
+                            )
 
                     # Speed Slider + Freedrive
-                    with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
+                    with (
+                        ui.row().classes("w-full").style("gap: 12px; margin-top: 12px")
+                    ):
                         with ui.element("div").classes("section-card flex-1"):
                             ui.label("⚡ Speed Slider").classes("section-header")
                             with ui.column().style("padding: 16px"):
                                 speed_slider_label = ui.label("100%").style(
-                                    "font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace")
+                                    "font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace"
+                                )
+
                                 async def _speed_slider_change(e):
-                                    speed_slider_label.set_text(f"{int(e.value * 100)}%")
-                                    await run.io_bound(state.send_command, "setSpeedSlider", {"speed": e.value})
-                                speed_slider = ui.slider(min=0, max=1, step=0.01, value=1.0,
-                                    on_change=_speed_slider_change).style("width: 100%")
+                                    speed_slider_label.set_text(
+                                        f"{int(e.value * 100)}%"
+                                    )
+                                    await run.io_bound(
+                                        state.send_command,
+                                        "setSpeedSlider",
+                                        {"speed": e.value},
+                                    )
+
+                                speed_slider = ui.slider(
+                                    min=0,
+                                    max=1,
+                                    step=0.01,
+                                    value=1.0,
+                                    on_change=_speed_slider_change,
+                                ).style("width: 100%")
 
                         with ui.element("div").classes("section-card flex-1"):
-                            ui.label("✋ Freedrive / Teach Mode").classes("section-header")
+                            ui.label("✋ Freedrive / Teach Mode").classes(
+                                "section-header"
+                            )
                             with ui.column().style("padding: 16px; gap: 8px"):
                                 freedrive_btn = ui.button("Enable Freedrive")
+
                                 async def _freedrive_handler():
                                     await _toggle_freedrive(state, freedrive_btn)
+
                                 freedrive_btn.on_click(_freedrive_handler)
-                                freedrive_btn.style("background: #7B61FF; color: white; font-weight: 600; padding: 12px 24px")
+                                freedrive_btn.style(
+                                    "background: #7B61FF; color: white; font-weight: 600; padding: 12px 24px"
+                                )
 
                     # Program Control + Log
-                    with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
+                    with (
+                        ui.row().classes("w-full").style("gap: 12px; margin-top: 12px")
+                    ):
                         with ui.element("div").classes("section-card flex-1"):
                             ui.label("📋 Program Control").classes("section-header")
                             with ui.row().style("padding: 16px; gap: 8px"):
-                                _ctrl_btn("▶ Play",   lambda: state.send_command("play"),   "#00D4AA")
-                                _ctrl_btn("⏸ Pause",  lambda: state.send_command("pause"),  "#FBBF24")
-                                _ctrl_btn("⏹ Stop",   lambda: state.send_command("stop"),   "#FF6B6B")
-                                _ctrl_btn("🔄 Re-upload Script", lambda: state.send_command("reuploadScript"), "#4895EF")
-                                _ctrl_btn("⊘ Zero F/T", lambda: state.send_command("zeroFtSensor"), "#6E7681")
+                                _ctrl_btn(
+                                    "▶ Play",
+                                    lambda: state.send_command("play"),
+                                    "#00D4AA",
+                                )
+                                _ctrl_btn(
+                                    "⏸ Pause",
+                                    lambda: state.send_command("pause"),
+                                    "#FBBF24",
+                                )
+                                _ctrl_btn(
+                                    "⏹ Stop",
+                                    lambda: state.send_command("stop"),
+                                    "#FF6B6B",
+                                )
+                                _ctrl_btn(
+                                    "🔄 Re-upload Script",
+                                    lambda: state.send_command("reuploadScript"),
+                                    "#4895EF",
+                                )
+                                _ctrl_btn(
+                                    "⊘ Zero F/T",
+                                    lambda: state.send_command("zeroFtSensor"),
+                                    "#6E7681",
+                                )
 
                         with ui.element("div").classes("section-card flex-1"):
                             ui.label("📜 Command Log").classes("section-header")
-                            ctrl_log_container = ui.element("div").classes("ctrl-log").style("margin: 12px")
+                            ctrl_log_container = (
+                                ui.element("div")
+                                .classes("ctrl-log")
+                                .style("margin: 12px")
+                            )
                             ctrl_log_content = ui.html("").style("color: #8B949E")
 
                 # ── I/O Control ──
                 with ui.tab_panel(ctrl_tab_io):
                     with ui.row().classes("w-full").style("gap: 12px"):
                         with ui.element("div").classes("section-card flex-1"):
-                            ui.label("🔌 Standard Digital Outputs (0–7)").classes("section-header")
-                            with ui.row().style("padding: 16px; gap: 8px; flex-wrap: wrap"):
+                            ui.label("🔌 Standard Digital Outputs (0–7)").classes(
+                                "section-header"
+                            )
+                            with ui.row().style(
+                                "padding: 16px; gap: 8px; flex-wrap: wrap"
+                            ):
                                 for i in range(8):
-                                    _dio_switch(f"DO {i}", state, "setStandardDigitalOut", i)
+                                    _dio_switch(
+                                        f"DO {i}", state, "setStandardDigitalOut", i
+                                    )
 
                         with ui.element("div").classes("section-card flex-1"):
-                            ui.label("🔌 Configurable Digital Outputs (0–7)").classes("section-header")
-                            with ui.row().style("padding: 16px; gap: 8px; flex-wrap: wrap"):
+                            ui.label("🔌 Configurable Digital Outputs (0–7)").classes(
+                                "section-header"
+                            )
+                            with ui.row().style(
+                                "padding: 16px; gap: 8px; flex-wrap: wrap"
+                            ):
                                 for i in range(8):
-                                    _dio_switch(f"CDO {i}", state, "setConfigurableDigitalOut", i)
+                                    _dio_switch(
+                                        f"CDO {i}",
+                                        state,
+                                        "setConfigurableDigitalOut",
+                                        i,
+                                    )
 
-                    with ui.row().classes("w-full").style("gap: 12px; margin-top: 12px"):
+                    with (
+                        ui.row().classes("w-full").style("gap: 12px; margin-top: 12px")
+                    ):
                         with ui.element("div").classes("section-card flex-1"):
-                            ui.label("🔧 Tool Digital Outputs (0–1)").classes("section-header")
+                            ui.label("🔧 Tool Digital Outputs (0–1)").classes(
+                                "section-header"
+                            )
                             with ui.row().style("padding: 16px; gap: 16px"):
                                 _dio_switch("TDO 0", state, "setToolDigitalOut", 0)
                                 _dio_switch("TDO 1", state, "setToolDigitalOut", 1)
@@ -2559,44 +3895,107 @@ def build_dashboard(state: AppState):
                             ui.label("📊 Analog Outputs").classes("section-header")
                             with ui.row().style("padding: 16px; gap: 24px"):
                                 with ui.column().style("flex: 1"):
-                                    ao0_label = ui.label("AO 0 — 0%").style("font-size: 10px; color: var(--muted)")
-                                    ui.slider(min=0, max=1, step=0.01, value=0,
+                                    ao0_label = ui.label("AO 0 — 0%").style(
+                                        "font-size: 10px; color: var(--muted)"
+                                    )
+                                    ui.slider(
+                                        min=0,
+                                        max=1,
+                                        step=0.01,
+                                        value=0,
                                         on_change=lambda e: (
-                                            ao0_label.set_text(f"AO 0 — {int(e.value*100)}%"),
-                                            state.send_command("setAnalogOutputVoltage", {"id": 0, "ratio": e.value})
-                                        ))
+                                            ao0_label.set_text(
+                                                f"AO 0 — {int(e.value * 100)}%"
+                                            ),
+                                            state.send_command(
+                                                "setAnalogOutputVoltage",
+                                                {"id": 0, "ratio": e.value},
+                                            ),
+                                        ),
+                                    )
                                 with ui.column().style("flex: 1"):
-                                    ao1_label = ui.label("AO 1 — 0%").style("font-size: 10px; color: var(--muted)")
-                                    ui.slider(min=0, max=1, step=0.01, value=0,
+                                    ao1_label = ui.label("AO 1 — 0%").style(
+                                        "font-size: 10px; color: var(--muted)"
+                                    )
+                                    ui.slider(
+                                        min=0,
+                                        max=1,
+                                        step=0.01,
+                                        value=0,
                                         on_change=lambda e: (
-                                            ao1_label.set_text(f"AO 1 — {int(e.value*100)}%"),
-                                            state.send_command("setAnalogOutputVoltage", {"id": 1, "ratio": e.value})
-                                        ))
+                                            ao1_label.set_text(
+                                                f"AO 1 — {int(e.value * 100)}%"
+                                            ),
+                                            state.send_command(
+                                                "setAnalogOutputVoltage",
+                                                {"id": 1, "ratio": e.value},
+                                            ),
+                                        ),
+                                    )
 
                 # ── Settings & Tools ──
                 with ui.tab_panel(ctrl_tab_set):
                     with ui.row().classes("w-full").style("gap: 12px"):
                         with ui.element("div").classes("section-card flex-1"):
-                            ui.label("⚖ Payload Configuration").classes("section-header")
-                            with ui.row().style("padding: 16px; gap: 12px; align-items: flex-end; flex-wrap: wrap"):
-                                pl_mass = ui.number("Mass (kg)", value=0, min=0, max=5, step=0.01).style("width: 90px")
-                                pl_cx = ui.number("CoG X (m)", value=0, step=0.001).style("width: 90px")
-                                pl_cy = ui.number("CoG Y (m)", value=0, step=0.001).style("width: 90px")
-                                pl_cz = ui.number("CoG Z (m)", value=0, step=0.001).style("width: 90px")
+                            ui.label("⚖ Payload Configuration").classes(
+                                "section-header"
+                            )
+                            with ui.row().style(
+                                "padding: 16px; gap: 12px; align-items: flex-end; flex-wrap: wrap"
+                            ):
+                                pl_mass = ui.number(
+                                    "Mass (kg)", value=0, min=0, max=5, step=0.01
+                                ).style("width: 90px")
+                                pl_cx = ui.number(
+                                    "CoG X (m)", value=0, step=0.001
+                                ).style("width: 90px")
+                                pl_cy = ui.number(
+                                    "CoG Y (m)", value=0, step=0.001
+                                ).style("width: 90px")
+                                pl_cz = ui.number(
+                                    "CoG Z (m)", value=0, step=0.001
+                                ).style("width: 90px")
+
                                 async def _set_payload():
-                                    await run.io_bound(state.send_command,
-                                        "setPayload", {"mass": pl_mass.value, "cog": [pl_cx.value, pl_cy.value, pl_cz.value]})
-                                ui.button("Set Payload", on_click=_set_payload).style("background: #4895EF; color: white; font-weight: 600")
+                                    await run.io_bound(
+                                        state.send_command,
+                                        "setPayload",
+                                        {
+                                            "mass": pl_mass.value,
+                                            "cog": [
+                                                pl_cx.value,
+                                                pl_cy.value,
+                                                pl_cz.value,
+                                            ],
+                                        },
+                                    )
+
+                                ui.button("Set Payload", on_click=_set_payload).style(
+                                    "background: #4895EF; color: white; font-weight: 600"
+                                )
 
                         with ui.element("div").classes("section-card flex-1"):
                             ui.label("🎯 TCP Offset").classes("section-header")
-                            with ui.row().style("padding: 16px; gap: 12px; align-items: flex-end; flex-wrap: wrap"):
-                                tcp_inputs = [ui.number(a, value=0, step=0.001).style("width: 70px")
-                                             for a in ["X", "Y", "Z", "Rx", "Ry", "Rz"]]
+                            with ui.row().style(
+                                "padding: 16px; gap: 12px; align-items: flex-end; flex-wrap: wrap"
+                            ):
+                                tcp_inputs = [
+                                    ui.number(a, value=0, step=0.001).style(
+                                        "width: 70px"
+                                    )
+                                    for a in ["X", "Y", "Z", "Rx", "Ry", "Rz"]
+                                ]
+
                                 async def _set_tcp():
-                                    await run.io_bound(state.send_command,
-                                        "setTcp", {"offset": [inp.value for inp in tcp_inputs]})
-                                ui.button("Set TCP", on_click=_set_tcp).style("background: #00D4AA; color: #0B1120; font-weight: 600")
+                                    await run.io_bound(
+                                        state.send_command,
+                                        "setTcp",
+                                        {"offset": [inp.value for inp in tcp_inputs]},
+                                    )
+
+                                ui.button("Set TCP", on_click=_set_tcp).style(
+                                    "background: #00D4AA; color: #0B1120; font-weight: 600"
+                                )
 
         # ═══════════════════════════════════════════════════════════════
         #  TAB 6: DIGITAL TWIN
@@ -2607,65 +4006,102 @@ def build_dashboard(state: AppState):
                 "gap: 12px; height: calc(100vh - 200px); min-height: 560px;"
             ):
                 # ── Top-Left: Emulation Twin (Isaac Sim Viewport) ──
-                with ui.element("div").classes("dark-panel fs-panel").style("display: flex; flex-direction: column") as panel_twin:
-                    with ui.element("div").classes("dark-panel-header").style(
-                        "display: flex; align-items: center; justify-content: space-between"):
+                with (
+                    ui.element("div")
+                    .classes("dark-panel fs-panel")
+                    .style("display: flex; flex-direction: column") as panel_twin
+                ):
+                    with (
+                        ui.element("div")
+                        .classes("dark-panel-header")
+                        .style(
+                            "display: flex; align-items: center; justify-content: space-between"
+                        )
+                    ):
                         with ui.row().style("gap: 8px; align-items: center"):
                             ui.label("🌐").style("font-size: 14px")
                             ui.label("ISAAC SIM — DIGITAL TWIN").style(
-                                "font-size: 11.5px; font-weight: 700; color: #e6edf3; letter-spacing: 0.8px")
+                                "font-size: 11.5px; font-weight: 700; color: #e6edf3; letter-spacing: 0.8px"
+                            )
                         with ui.row().style("gap: 6px; align-items: center"):
                             twin_status_label = ui.label("CONNECTING").style(
                                 "padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
-                                "background: rgba(251,191,36,0.15); color: #FBBF24; border: 1px solid rgba(251,191,36,0.3);")
+                                "background: rgba(251,191,36,0.15); color: #FBBF24; border: 1px solid rgba(251,191,36,0.3);"
+                            )
                             _fullscreen_btn(panel_twin, dark=True)
 
                     twin_feed_img = ui.image("http://localhost:8211/feed").style(
-                        "flex: 1; object-fit: contain; background: #000; min-height: 0;")
+                        "flex: 1; object-fit: contain; background: #000; min-height: 0;"
+                    )
 
                     async def _check_twin_stream():
                         import aiohttp
+
                         try:
                             async with aiohttp.ClientSession() as session:
-                                async with session.get("http://localhost:8211/snapshot", timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                                async with session.get(
+                                    "http://localhost:8211/snapshot",
+                                    timeout=aiohttp.ClientTimeout(total=2),
+                                ) as resp:
                                     if resp.status == 200:
                                         twin_status_label.set_text("● LIVE")
                                         twin_status_label.style(
                                             "padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
-                                            "background: rgba(0,212,170,0.15); color: #00D4AA; border: 1px solid rgba(0,212,170,0.3);")
+                                            "background: rgba(0,212,170,0.15); color: #00D4AA; border: 1px solid rgba(0,212,170,0.3);"
+                                        )
                                     else:
                                         twin_status_label.set_text("OFFLINE")
                                         twin_status_label.style(
                                             "padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
-                                            "background: #1f293780; color: #8b949e; border: 1px solid #30363d;")
+                                            "background: #1f293780; color: #8b949e; border: 1px solid #30363d;"
+                                        )
                         except Exception:
                             twin_status_label.set_text("OFFLINE")
                             twin_status_label.style(
                                 "padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
-                                "background: #1f293780; color: #8b949e; border: 1px solid #30363d;")
+                                "background: #1f293780; color: #8b949e; border: 1px solid #30363d;"
+                            )
 
                     ui.timer(5.0, _check_twin_stream)
 
                 # ── Top-Right: RealSense L515 ──
-                with ui.element("div").classes("dark-panel fs-panel").style("display: flex; flex-direction: column") as panel_cam:
-                    with ui.element("div").classes("dark-panel-header").style(
-                        "display: flex; align-items: center; justify-content: space-between"):
+                with (
+                    ui.element("div")
+                    .classes("dark-panel fs-panel")
+                    .style("display: flex; flex-direction: column") as panel_cam
+                ):
+                    with (
+                        ui.element("div")
+                        .classes("dark-panel-header")
+                        .style(
+                            "display: flex; align-items: center; justify-content: space-between"
+                        )
+                    ):
                         with ui.row().style("gap: 8px; align-items: center"):
                             ui.label("📷").style("font-size: 14px")
                             ui.label("REALSENSE L515 — 1080p").style(
-                                "font-size: 11.5px; font-weight: 700; color: #e6edf3; letter-spacing: 0.8px")
+                                "font-size: 11.5px; font-weight: 700; color: #e6edf3; letter-spacing: 0.8px"
+                            )
                         with ui.row().style("gap: 6px; align-items: center"):
-                            _as = ("padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
-                                   "border: 1px solid #e6edf3; background: rgba(230,237,243,0.13); color: #e6edf3; cursor: pointer;")
-                            _is = ("padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
-                                   "border: 1px solid #30363d; background: rgba(31,41,55,0.5); color: #8b949e; cursor: pointer;")
+                            _as = (
+                                "padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
+                                "border: 1px solid #e6edf3; background: rgba(230,237,243,0.13); color: #e6edf3; cursor: pointer;"
+                            )
+                            _is = (
+                                "padding: 3px 10px; border-radius: 4px; font-size: 9.5px; font-weight: 600;"
+                                "border: 1px solid #30363d; background: rgba(31,41,55,0.5); color: #8b949e; cursor: pointer;"
+                            )
 
                             cam_btn_rgb = ui.button("RGB").style(_as)
                             cam_btn_depth = ui.button("Depth").style(_is)
                             cam_btn_both = ui.button("Both").style(_is)
 
                             def _switch_feed(feed):
-                                feeds = {"color": "/video_feed", "depth": "/depth_feed", "combined": "/combined_feed"}
+                                feeds = {
+                                    "color": "/video_feed",
+                                    "depth": "/depth_feed",
+                                    "combined": "/combined_feed",
+                                }
                                 cam_feed_img.set_source(feeds[feed])
                                 cam_btn_rgb.style(_as if feed == "color" else _is)
                                 cam_btn_depth.style(_as if feed == "depth" else _is)
@@ -2677,43 +4113,61 @@ def build_dashboard(state: AppState):
 
                             ui.element("div").style(
                                 "width: 8px; height: 8px; border-radius: 50%; background: #FF6B6B;"
-                                "animation: pulse 2s infinite; margin-left: 6px;")
-                            ui.label("LIVE").style("font-size: 10px; color: #FF6B6B; font-weight: 600")
+                                "animation: pulse 2s infinite; margin-left: 6px;"
+                            )
+                            ui.label("LIVE").style(
+                                "font-size: 10px; color: #FF6B6B; font-weight: 600"
+                            )
                             _fullscreen_btn(panel_cam, dark=True)
 
                     with ui.element("div").style(
                         "flex: 1; background: #000; overflow: hidden; display: flex;"
-                        "align-items: center; justify-content: center;"):
+                        "align-items: center; justify-content: center;"
+                    ):
                         cam_feed_img = ui.image("/video_feed").style(
-                            "width: 100%; height: 100%; object-fit: contain;")
+                            "width: 100%; height: 100%; object-fit: contain;"
+                        )
 
                 # ── Bottom-Left: Telemetry ──
-                with ui.element("div").classes("section-card fs-panel").style("display: flex; flex-direction: column") as panel_telem:
+                with (
+                    ui.element("div")
+                    .classes("section-card fs-panel")
+                    .style("display: flex; flex-direction: column") as panel_telem
+                ):
                     with ui.element("div").style(
                         "padding: 10px 16px; background: #0D1117; border-bottom: 1px solid #1E293B;"
-                        "display: flex; align-items: center; justify-content: space-between;"):
+                        "display: flex; align-items: center; justify-content: space-between;"
+                    ):
                         with ui.row().style("gap: 8px; align-items: center"):
                             ui.label("📊").style("font-size: 14px")
                             ui.label("TELEMETRY").style(
-                                "font-size: 11.5px; font-weight: 700; color: var(--text); letter-spacing: 0.8px")
+                                "font-size: 11.5px; font-weight: 700; color: var(--text); letter-spacing: 0.8px"
+                            )
                         with ui.row().style("gap: 8px; align-items: center"):
                             twin_elapsed_label = ui.label("0.0s").style(
-                                "font-size: 10px; color: var(--subtle); font-family: 'JetBrains Mono', monospace")
+                                "font-size: 10px; color: var(--subtle); font-family: 'JetBrains Mono', monospace"
+                            )
                             _fullscreen_btn(panel_telem, dark=False)
 
-                    with ui.column().style("flex: 1; padding: 14px; gap: 10px; overflow-y: auto"):
+                    with ui.column().style(
+                        "flex: 1; padding: 14px; gap: 10px; overflow-y: auto"
+                    ):
                         # Safety status bar
                         twin_safety_bar = ui.element("div").style(
                             "padding: 8px 12px; border-radius: 8px; background: rgba(0,212,170,0.08); border: 1px solid rgba(0,212,170,0.2);"
-                            "display: flex; align-items: center; justify-content: space-between;")
+                            "display: flex; align-items: center; justify-content: space-between;"
+                        )
                         with twin_safety_bar:
                             with ui.row().style("gap: 8px; align-items: center"):
                                 twin_safety_dot = ui.element("div").style(
-                                    "width: 10px; height: 10px; border-radius: 50%; background: #00D4AA;")
+                                    "width: 10px; height: 10px; border-radius: 50%; background: #00D4AA;"
+                                )
                                 twin_safety_label = ui.label("ZONE CLEAR").style(
-                                    "font-size: 11px; font-weight: 700; color: #E6EDF3; letter-spacing: 0.5px")
+                                    "font-size: 11px; font-weight: 700; color: #E6EDF3; letter-spacing: 0.5px"
+                                )
                             twin_safety_dist = ui.label("—").style(
-                                "font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace")
+                                "font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace"
+                            )
 
                         with ui.row().style("gap: 8px"):
                             twin_kpi_speed = _kpi_mini("TCP Speed", "—", "m/s")
@@ -2721,39 +4175,60 @@ def build_dashboard(state: AppState):
                             twin_kpi_power = _kpi_mini("Power", "—", "W")
 
                         with ui.row().style("gap: 8px"):
-                            twin_gauge_temp = ui.plotly(make_gauge(0, "Max Temp", 85, "#F8B739", 50, 70)).classes("flex-1")
-                            twin_gauge_cur  = ui.plotly(make_gauge(0, "Max Current", 5, "#00D4AA", 3, 4.5)).classes("flex-1")
-                            twin_gauge_mom  = ui.plotly(make_gauge(0, "Momentum", 25, "#7B61FF", 15, 20)).classes("flex-1")
+                            twin_gauge_temp = ui.plotly(
+                                make_gauge(0, "Max Temp", 85, "#F8B739", 50, 70)
+                            ).classes("flex-1")
+                            twin_gauge_cur = ui.plotly(
+                                make_gauge(0, "Max Current", 5, "#00D4AA", 3, 4.5)
+                            ).classes("flex-1")
+                            twin_gauge_mom = ui.plotly(
+                                make_gauge(0, "Momentum", 25, "#7B61FF", 15, 20)
+                            ).classes("flex-1")
 
-                        twin_chart_force = ui.plotly(make_force_chart([])).classes("flex-1").style("min-height: 100px")
+                        twin_chart_force = (
+                            ui.plotly(make_force_chart([]))
+                            .classes("flex-1")
+                            .style("min-height: 100px")
+                        )
 
                 # ── Bottom-Right: Control ──
-                with ui.element("div").classes("section-card fs-panel").style("display: flex; flex-direction: column") as panel_ctrl:
+                with (
+                    ui.element("div")
+                    .classes("section-card fs-panel")
+                    .style("display: flex; flex-direction: column") as panel_ctrl
+                ):
                     with ui.element("div").style(
                         "padding: 10px 16px; background: #0D1117; border-bottom: 1px solid #1E293B;"
-                        "display: flex; align-items: center; justify-content: space-between;"):
+                        "display: flex; align-items: center; justify-content: space-between;"
+                    ):
                         with ui.row().style("gap: 8px; align-items: center"):
                             ui.label("🎮").style("font-size: 14px")
                             ui.label("CONTROL").style(
-                                "font-size: 11.5px; font-weight: 700; color: var(--text); letter-spacing: 0.8px")
+                                "font-size: 11.5px; font-weight: 700; color: var(--text); letter-spacing: 0.8px"
+                            )
                         with ui.row().style("gap: 8px; align-items: center"):
                             twin_robot_badge = ui.label("UNKNOWN").style(
                                 "padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 600;"
-                                "background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);")
+                                "background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);"
+                            )
                             _fullscreen_btn(panel_ctrl, dark=False)
 
-                    with ui.column().style("flex: 1; padding: 14px; gap: 10px; overflow-y: auto"):
+                    with ui.column().style(
+                        "flex: 1; padding: 14px; gap: 10px; overflow-y: auto"
+                    ):
                         # Emergency Stop — ALWAYS available, never locked, uses verified stop
                         with ui.element("div").style("position: relative"):
                             estop_btn = ui.button("⚠ EMERGENCY STOP").style(
                                 "width: 100%; padding: 12px; font-size: 14px; font-weight: 800;"
                                 "color: white; background: linear-gradient(135deg, #DC2626, #EF4444);"
                                 "border: 3px solid #991B1B; border-radius: 10px;"
-                                "box-shadow: 0 4px 20px rgba(220,38,38,0.4);")
+                                "box-shadow: 0 4px 20px rgba(220,38,38,0.4);"
+                            )
                             estop_indicator = ui.label("").style(
                                 "position: absolute; top: -6px; right: -6px; width: 22px; height: 22px;"
                                 "border-radius: 50%; display: none; align-items: center; justify-content: center;"
-                                "font-size: 13px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);")
+                                "font-size: 13px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
+                            )
 
                             async def _estop_click():
                                 # E-Stop ALWAYS fires, even if panel is locked
@@ -2761,7 +4236,8 @@ def build_dashboard(state: AppState):
                                 estop_btn.style(
                                     "width: 100%; padding: 12px; font-size: 14px; font-weight: 800;"
                                     "color: white; background: #991B1B; border: 3px solid #991B1B;"
-                                    "border-radius: 10px; opacity: 0.7;")
+                                    "border-radius: 10px; opacity: 0.7;"
+                                )
                                 # Send both stop commands
                                 await run.io_bound(state.send_command, "stopJ", {})
                                 await run.io_bound(state.send_command, "stopScript", {})
@@ -2774,24 +4250,28 @@ def build_dashboard(state: AppState):
                                     estop_btn.style(
                                         "width: 100%; padding: 12px; font-size: 14px; font-weight: 800;"
                                         "color: white; background: #00D4AA; border: 3px solid #059669;"
-                                        "border-radius: 10px; box-shadow: 0 4px 20px rgba(0,212,170,0.4);")
+                                        "border-radius: 10px; box-shadow: 0 4px 20px rgba(0,212,170,0.4);"
+                                    )
                                     estop_indicator.set_text("✓")
                                     estop_indicator.style(
                                         "position: absolute; top: -6px; right: -6px; width: 22px; height: 22px;"
                                         "border-radius: 50%; display: flex; align-items: center; justify-content: center;"
                                         "font-size: 13px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
-                                        "background: #00D4AA; color: #0B1120;")
+                                        "background: #00D4AA; color: #0B1120;"
+                                    )
                                 else:
                                     estop_btn.style(
                                         "width: 100%; padding: 12px; font-size: 14px; font-weight: 800;"
                                         "color: white; background: #FBBF24; border: 3px solid #D97706;"
-                                        "border-radius: 10px;")
+                                        "border-radius: 10px;"
+                                    )
                                     estop_indicator.set_text("⚠")
                                     estop_indicator.style(
                                         "position: absolute; top: -6px; right: -6px; width: 22px; height: 22px;"
                                         "border-radius: 50%; display: flex; align-items: center; justify-content: center;"
                                         "font-size: 13px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
-                                        "background: #FBBF24; color: #0B1120;")
+                                        "background: #FBBF24; color: #0B1120;"
+                                    )
 
                                 # Unlock panel if it was locked by another command
                                 if _twin_lock and _twin_lock[0].get("locked"):
@@ -2806,100 +4286,209 @@ def build_dashboard(state: AppState):
                         _twin_lock = [{"locked": False}]
 
                         with ui.row().style("gap: 6px; flex-wrap: wrap"):
-                            _ack_btn("⚡ Power On",  "powerOn",       state, "#00D4AA", panel_lock=_twin_lock)
-                            _ack_btn("⏻ Power Off",  "powerOff",      state, "#6E7681", panel_lock=_twin_lock)
-                            _ack_btn("🔓 Brakes",    "brakeRelease",  state, "#4895EF", panel_lock=_twin_lock)
-                            _ack_btn("🔑 Unlock P-Stop", "unlockProtectiveStop", state, "#FBBF24", panel_lock=_twin_lock)
-                            _ack_btn("🔄 Restart Safety", "restartSafety", state, "#7B61FF", panel_lock=_twin_lock)
+                            _ack_btn(
+                                "⚡ Power On",
+                                "powerOn",
+                                state,
+                                "#00D4AA",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "⏻ Power Off",
+                                "powerOff",
+                                state,
+                                "#6E7681",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "🔓 Brakes",
+                                "brakeRelease",
+                                state,
+                                "#4895EF",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "🔑 Unlock P-Stop",
+                                "unlockProtectiveStop",
+                                state,
+                                "#FBBF24",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "🔄 Restart Safety",
+                                "restartSafety",
+                                state,
+                                "#7B61FF",
+                                panel_lock=_twin_lock,
+                            )
 
                         # Program Control
                         with ui.row().style("gap: 6px; flex-wrap: wrap"):
-                            _ack_btn("▶ Play",       "play",          state, "#00D4AA", panel_lock=_twin_lock)
-                            _ack_btn("⏸ Pause",      "pause",         state, "#FBBF24", panel_lock=_twin_lock)
-                            _ack_btn("⏹ Stop",       "stop",          state, "#FF6B6B", panel_lock=_twin_lock)
-                            _ack_btn("🔄 Re-upload",  "reuploadScript", state, "#4895EF", panel_lock=_twin_lock)
-                            _ack_btn("⊘ Zero F/T",   "zeroFtSensor",  state, "#6E7681", panel_lock=_twin_lock)
+                            _ack_btn(
+                                "▶ Play",
+                                "play",
+                                state,
+                                "#00D4AA",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "⏸ Pause",
+                                "pause",
+                                state,
+                                "#FBBF24",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "⏹ Stop",
+                                "stop",
+                                state,
+                                "#FF6B6B",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "🔄 Re-upload",
+                                "reuploadScript",
+                                state,
+                                "#4895EF",
+                                panel_lock=_twin_lock,
+                            )
+                            _ack_btn(
+                                "⊘ Zero F/T",
+                                "zeroFtSensor",
+                                state,
+                                "#6E7681",
+                                panel_lock=_twin_lock,
+                            )
 
                         # Car Assembly Program
                         with ui.element("div").style(
-                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 8px 12px"):
+                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 8px 12px"
+                        ):
                             car_assembly_btn = ui.button("🚗 Start Car Assembly").style(
                                 "background: linear-gradient(135deg, #FF6B00, #FF8C00); color: white; font-weight: 700; padding: 10px 20px;"
-                                "border-radius: 8px; width: 100%; font-size: 14px; letter-spacing: 0.5px;")
+                                "border-radius: 8px; width: 100%; font-size: 14px; letter-spacing: 0.5px;"
+                            )
 
                             async def _run_car_assembly():
-                                style_base = ("color: white; font-weight: 700; padding: 10px 20px;"
-                                              "border-radius: 8px; width: 100%; font-size: 14px;")
+                                style_base = (
+                                    "color: white; font-weight: 700; padding: 10px 20px;"
+                                    "border-radius: 8px; width: 100%; font-size: 14px;"
+                                )
                                 car_assembly_btn.set_text("⏳ Loading Program...")
-                                car_assembly_btn.style(f"background: #6E7681; {style_base} pointer-events: none;")
-                                result = await run.io_bound(state.send_command, "loadProgram", {"program": "car_assembly"})
+                                car_assembly_btn.style(
+                                    f"background: #6E7681; {style_base} pointer-events: none;"
+                                )
+                                result = await run.io_bound(
+                                    state.send_command,
+                                    "loadProgram",
+                                    {"program": "car_assembly"},
+                                )
                                 if result.get("status") == "ok":
                                     await asyncio.sleep(1)
                                     await run.io_bound(state.send_command, "play")
                                     car_assembly_btn.set_text("🚗 Car Assembly Running")
-                                    car_assembly_btn.style(f"background: #00D4AA; color: #0B1120; font-weight: 700; padding: 10px 20px;"
-                                                           "border-radius: 8px; width: 100%; font-size: 14px;")
+                                    car_assembly_btn.style(
+                                        f"background: #00D4AA; color: #0B1120; font-weight: 700; padding: 10px 20px;"
+                                        "border-radius: 8px; width: 100%; font-size: 14px;"
+                                    )
                                 else:
                                     car_assembly_btn.set_text("❌ Load Failed — Retry")
-                                    car_assembly_btn.style(f"background: #FF6B6B; {style_base}")
+                                    car_assembly_btn.style(
+                                        f"background: #FF6B6B; {style_base}"
+                                    )
                                 await asyncio.sleep(3)
                                 car_assembly_btn.set_text("🚗 Start Car Assembly")
-                                car_assembly_btn.style(f"background: linear-gradient(135deg, #FF6B00, #FF8C00); {style_base} letter-spacing: 0.5px;")
+                                car_assembly_btn.style(
+                                    f"background: linear-gradient(135deg, #FF6B00, #FF8C00); {style_base} letter-spacing: 0.5px;"
+                                )
 
                             car_assembly_btn.on("click", _run_car_assembly)
 
                         # Freedrive Toggle
                         with ui.element("div").style(
-                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 8px 12px"):
+                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 8px 12px"
+                        ):
                             twin_freedrive_btn = ui.button("✋ Enable Freedrive").style(
                                 "background: #7B61FF; color: white; font-weight: 600; padding: 8px 16px;"
-                                "border-radius: 6px; width: 100%;")
+                                "border-radius: 6px; width: 100%;"
+                            )
 
                             async def _twin_toggle_freedrive():
                                 if state.freedrive_active:
-                                    await run.io_bound(state.send_command, "endFreedriveMode")
+                                    await run.io_bound(
+                                        state.send_command, "endFreedriveMode"
+                                    )
                                     state.freedrive_active = False
                                     twin_freedrive_btn.set_text("✋ Enable Freedrive")
                                     twin_freedrive_btn.style(
                                         "background: #7B61FF; color: white; font-weight: 600; padding: 8px 16px;"
-                                        "border-radius: 6px; width: 100%;")
+                                        "border-radius: 6px; width: 100%;"
+                                    )
                                 else:
-                                    await run.io_bound(state.send_command, "freedriveMode")
+                                    await run.io_bound(
+                                        state.send_command, "freedriveMode"
+                                    )
                                     state.freedrive_active = True
                                     twin_freedrive_btn.set_text("🔒 Exit Freedrive")
                                     twin_freedrive_btn.style(
                                         "background: #FF6B6B; color: #0B1120; font-weight: 600; padding: 8px 16px;"
-                                        "border-radius: 6px; width: 100%;")
+                                        "border-radius: 6px; width: 100%;"
+                                    )
 
                             twin_freedrive_btn.on("click", _twin_toggle_freedrive)
 
                         # Move Command (compact)
                         with ui.element("div").style(
-                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 10px"):
+                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 10px"
+                        ):
                             ui.label("MOVE COMMAND").style(
-                                "font-size: 9.5px; color: var(--muted); letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 6px")
-                            with ui.row().style("gap: 8px; align-items: flex-end; flex-wrap: wrap"):
-                                twin_move_mode = ui.toggle(["moveJ", "moveL"], value="moveJ").style(
-                                    "font-family: 'JetBrains Mono', monospace; font-size: 10px")
-                                twin_move_speed = ui.number("Speed", value=0.5, step=0.01).style("width: 65px; font-size: 11px")
-                                twin_move_accel = ui.number("Accel", value=1.0, step=0.1).style("width: 65px; font-size: 11px")
-                            with ui.row().style("gap: 6px; margin-top: 6px; flex-wrap: wrap"):
+                                "font-size: 9.5px; color: var(--muted); letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 6px"
+                            )
+                            with ui.row().style(
+                                "gap: 8px; align-items: flex-end; flex-wrap: wrap"
+                            ):
+                                twin_move_mode = ui.toggle(
+                                    ["moveJ", "moveL"], value="moveJ"
+                                ).style(
+                                    "font-family: 'JetBrains Mono', monospace; font-size: 10px"
+                                )
+                                twin_move_speed = ui.number(
+                                    "Speed", value=0.5, step=0.01
+                                ).style("width: 65px; font-size: 11px")
+                                twin_move_accel = ui.number(
+                                    "Accel", value=1.0, step=0.1
+                                ).style("width: 65px; font-size: 11px")
+                            with ui.row().style(
+                                "gap: 6px; margin-top: 6px; flex-wrap: wrap"
+                            ):
                                 twin_move_targets = []
                                 labels_j = ["Base", "Shldr", "Elbow", "W1", "W2", "W3"]
                                 defaults = [0, -1.57, 0, 0, 1.57, 0]
                                 for i in range(6):
                                     twin_move_targets.append(
-                                        ui.number(labels_j[i], value=defaults[i], step=0.001).style("width: 60px; font-size: 10px"))
+                                        ui.number(
+                                            labels_j[i], value=defaults[i], step=0.001
+                                        ).style("width: 60px; font-size: 10px")
+                                    )
                             with ui.row().style("gap: 6px; margin-top: 8px"):
+
                                 async def _twin_exec_move():
-                                    await run.io_bound(state.send_command,
+                                    await run.io_bound(
+                                        state.send_command,
                                         twin_move_mode.value,
-                                        {"target": [mt.value for mt in twin_move_targets],
-                                         "speed": twin_move_speed.value,
-                                         "acceleration": twin_move_accel.value})
+                                        {
+                                            "target": [
+                                                mt.value for mt in twin_move_targets
+                                            ],
+                                            "speed": twin_move_speed.value,
+                                            "acceleration": twin_move_accel.value,
+                                        },
+                                    )
+
                                 ui.button("▶ Execute", on_click=_twin_exec_move).style(
                                     "background: #00D4AA; color: #0B1120; font-weight: 600; font-size: 11px;"
-                                    "padding: 6px 14px; border-radius: 6px;")
+                                    "padding: 6px 14px; border-radius: 6px;"
+                                )
 
                                 def _twin_copy_current():
                                     s = state.sample
@@ -2907,37 +4496,66 @@ def build_dashboard(state: AppState):
                                         return
                                     if twin_move_mode.value == "moveJ":
                                         for i in range(6):
-                                            twin_move_targets[i].value = round(s["q"][i], 4)
+                                            twin_move_targets[i].value = round(
+                                                s["q"][i], 4
+                                            )
                                     else:
                                         axes = ["x", "y", "z", "rx", "ry", "rz"]
                                         for i in range(6):
-                                            twin_move_targets[i].value = round(s["tcp"].get(axes[i], 0), 4)
+                                            twin_move_targets[i].value = round(
+                                                s["tcp"].get(axes[i], 0), 4
+                                            )
                                     twin_move_targets[0].update()
 
-                                ui.button("📋 Copy Current", on_click=_twin_copy_current).style(
+                                ui.button(
+                                    "📋 Copy Current", on_click=_twin_copy_current
+                                ).style(
                                     "background: #6E7681; color: white; font-weight: 600; font-size: 11px;"
-                                    "padding: 6px 14px; border-radius: 6px;")
+                                    "padding: 6px 14px; border-radius: 6px;"
+                                )
 
                         # Speed slider
-                        with ui.column().style("background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 10px"):
-                            with ui.row().style("justify-content: space-between; align-items: center"):
-                                ui.label("SPEED OVERRIDE").style("font-size: 9.5px; color: var(--muted); letter-spacing: 0.4px")
+                        with ui.column().style(
+                            "background: #0D1117; border-radius: 8px; border: 1px solid var(--border); padding: 10px"
+                        ):
+                            with ui.row().style(
+                                "justify-content: space-between; align-items: center"
+                            ):
+                                ui.label("SPEED OVERRIDE").style(
+                                    "font-size: 9.5px; color: var(--muted); letter-spacing: 0.4px"
+                                )
                                 twin_speed_label = ui.label("100%").style(
-                                    "font-size: 16px; font-weight: 700; font-family: 'JetBrains Mono', monospace")
+                                    "font-size: 16px; font-weight: 700; font-family: 'JetBrains Mono', monospace"
+                                )
+
                             async def _twin_speed_change(e):
-                                twin_speed_label.set_text(f"{int(e.value*100)}%")
-                                await run.io_bound(state.send_command, "setSpeedSlider", {"speed": e.value})
-                            ui.slider(min=0, max=1, step=0.01, value=1.0,
-                                on_change=_twin_speed_change)
+                                twin_speed_label.set_text(f"{int(e.value * 100)}%")
+                                await run.io_bound(
+                                    state.send_command,
+                                    "setSpeedSlider",
+                                    {"speed": e.value},
+                                )
+
+                            ui.slider(
+                                min=0,
+                                max=1,
+                                step=0.01,
+                                value=1.0,
+                                on_change=_twin_speed_change,
+                            )
 
     # ── FOOTER ──
     with ui.element("div").style(
         "padding: 10px 24px; border-top: 1px solid #1E293B; background: #111827;"
         "display: flex; justify-content: space-between; align-items: center; margin-top: 12px;"
     ):
-        ui.label(f"UR5e @ {state.args.ip} — RTDE v2 — ur_rtde").style("font-size: 10px; color: #6E7681")
+        ui.label(f"UR5e @ {state.args.ip} — RTDE v2 — ur_rtde").style(
+            "font-size: 10px; color: #6E7681"
+        )
         footer_info = ui.label("—").style("font-size: 10px; color: #6E7681")
-        ui.label("Future Factories Laboratory — Miami University | Powered by BWC").style("font-size: 10px; color: #6E7681")
+        ui.label(
+            "Future Factories Laboratory — Miami University | Powered by BWC"
+        ).style("font-size: 10px; color: #6E7681")
 
     # ══════════════════════════════════════════════════════════════════
     #  PERIODIC UPDATE (runs per-client)
@@ -2957,9 +4575,15 @@ def build_dashboard(state: AppState):
 
                 # Header badges
                 mode_text = "● LIVE" if state.is_live else "● DEMO"
-                mode_style = "background: #00D4AA30; color: #00D4AA" if state.is_live else "background: #FBBF2430; color: #FBBF24"
+                mode_style = (
+                    "background: #00D4AA30; color: #00D4AA"
+                    if state.is_live
+                    else "background: #FBBF2430; color: #FBBF24"
+                )
                 mode_badge.set_text(mode_text)
-                mode_badge.style(f"padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; {mode_style}")
+                mode_badge.style(
+                    f"padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; {mode_style}"
+                )
 
                 robot_badge.set_text(f"Robot: {s['robotModeDesc']}")
                 safety_badge.set_text(f"Safety: {s['safetyStatusDesc']}")
@@ -2968,7 +4592,8 @@ def build_dashboard(state: AppState):
                 elapsed_label.set_text(f"{mins}:{secs:02d}")
 
                 footer_info.set_text(
-                f"{s['t']:.1f}s elapsed · {len(hist)} samples · {'LIVE' if state.is_live else 'DEMO'}")
+                    f"{s['t']:.1f}s elapsed · {len(hist)} samples · {'LIVE' if state.is_live else 'DEMO'}"
+                )
 
                 # Overview KPIs
                 _update_kpi(kpi_speed, f"{s['tcpSpeed']:.3f}")
@@ -2979,11 +4604,28 @@ def build_dashboard(state: AppState):
                 _update_kpi(kpi_vib, f"{s['vibRMS']:.3f}")
 
                 # Overview gauges
-                gauge_scaling.update_figure(make_gauge(s["speedScaling"], "Speed Scaling", 1))
-                gauge_current.update_figure(make_gauge(s["iRobot"], "Robot Current", 10, "#00D4AA", 7, 9))
-                gauge_maxtemp.update_figure(make_gauge(max(s["temps"]) if s["temps"] else 0, "Max Joint Temp", 80, "#4895EF", 50, 70))
-                gauge_momentum.update_figure(make_gauge(s["momentum"], "Momentum", 25, "#7B61FF", 15, 20))
-                gauge_payload.update_figure(make_gauge(s["payloadMass"], "Payload", 5, "#4895EF", 4.5, 5.0))
+                gauge_scaling.update_figure(
+                    make_gauge(s["speedScaling"], "Speed Scaling", 1)
+                )
+                gauge_current.update_figure(
+                    make_gauge(s["iRobot"], "Robot Current", 10, "#00D4AA", 7, 9)
+                )
+                gauge_maxtemp.update_figure(
+                    make_gauge(
+                        max(s["temps"]) if s["temps"] else 0,
+                        "Max Joint Temp",
+                        80,
+                        "#4895EF",
+                        50,
+                        70,
+                    )
+                )
+                gauge_momentum.update_figure(
+                    make_gauge(s["momentum"], "Momentum", 25, "#7B61FF", 15, 20)
+                )
+                gauge_payload.update_figure(
+                    make_gauge(s["payloadMass"], "Payload", 5, "#4895EF", 4.5, 5.0)
+                )
 
                 # Overview charts
                 chart_jpos_overview.update_figure(make_joint_pos_chart(hist))
@@ -2996,10 +4638,16 @@ def build_dashboard(state: AppState):
                 chart_track_err.update_figure(make_tracking_error_chart(s))
                 chart_radar.update_figure(make_radar_chart(s))
                 joint_table.rows = [
-                {"joint": JOINT_LABELS[i], "pos": f"{s['q'][i]:.4f}", "vel": f"{s['qd'][i]:.4f}",
-                 "cur": f"{s['cur'][i]:.3f}", "torque": f"{s['torque'][i]:.2f}",
-                 "temp": f"{s['temps'][i]:.1f}", "err": f"{abs(s['trackErr'][i])*1000:.2f}"}
-                for i in range(6)
+                    {
+                        "joint": JOINT_LABELS[i],
+                        "pos": f"{s['q'][i]:.4f}",
+                        "vel": f"{s['qd'][i]:.4f}",
+                        "cur": f"{s['cur'][i]:.3f}",
+                        "torque": f"{s['torque'][i]:.2f}",
+                        "temp": f"{s['temps'][i]:.1f}",
+                        "err": f"{abs(s['trackErr'][i]) * 1000:.2f}",
+                    }
+                    for i in range(6)
                 ]
                 joint_table.update()
 
@@ -3007,11 +4655,29 @@ def build_dashboard(state: AppState):
                 for a in ["x", "y", "z", "rx", "ry", "rz"]:
                     _update_kpi(tcp_kpi_labels[a], f"{s['tcp'].get(a, 0):.4f}")
                 chart_force_detail.update_figure(make_force_chart(hist))
-                gauge_force_scalar.update_figure(make_gauge(s["forceScalar"], "Force Magnitude", 150, "#FF6B6B", 80, 120))
-                spd_fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="TCP Speed (m/s)", font=dict(size=12, color="#E6EDF3"))})
-                spd_fig.add_trace(go.Scatter(x=[h["t"] for h in hist], y=[h["tcpSpeed"] for h in hist],
-                                         mode="lines", fill="tozeroy", line=dict(color="#4895EF", width=2),
-                                         fillcolor="rgba(72,149,239,0.15)"))
+                gauge_force_scalar.update_figure(
+                    make_gauge(
+                        s["forceScalar"], "Force Magnitude", 150, "#FF6B6B", 80, 120
+                    )
+                )
+                spd_fig = go.Figure(
+                    layout={
+                        **PLOTLY_LAYOUT_BASE,
+                        "title": dict(
+                            text="TCP Speed (m/s)", font=dict(size=12, color="#E6EDF3")
+                        ),
+                    }
+                )
+                spd_fig.add_trace(
+                    go.Scatter(
+                        x=[h["t"] for h in hist],
+                        y=[h["tcpSpeed"] for h in hist],
+                        mode="lines",
+                        fill="tozeroy",
+                        line=dict(color="#4895EF", width=2),
+                        fillcolor="rgba(72,149,239,0.15)",
+                    )
+                )
                 chart_tcp_speed.update_figure(spd_fig)
 
                 # Power & Thermal
@@ -3023,17 +4689,54 @@ def build_dashboard(state: AppState):
                 chart_power.update_figure(make_power_chart(hist))
                 chart_energy.update_figure(make_energy_chart(hist))
                 chart_temp.update_figure(make_temp_chart(hist))
-                tb_fig = go.Figure(layout={**PLOTLY_LAYOUT_BASE, "title": dict(text="Current Temperature (°C)", font=dict(size=12, color="#E6EDF3")),
-                                       "yaxis": dict(range=[0, 70])})
-                tb_colors = ["#FF6B6B" if s["temps"][i]>50 else "#FBBF24" if s["temps"][i]>40 else "#00D4AA" for i in range(6)]
-                tb_fig.add_trace(go.Bar(x=JOINT_LABELS, y=s["temps"], marker_color=tb_colors))
+                tb_fig = go.Figure(
+                    layout={
+                        **PLOTLY_LAYOUT_BASE,
+                        "title": dict(
+                            text="Current Temperature (°C)",
+                            font=dict(size=12, color="#E6EDF3"),
+                        ),
+                        "yaxis": dict(range=[0, 70]),
+                    }
+                )
+                tb_colors = [
+                    "#FF6B6B"
+                    if s["temps"][i] > 50
+                    else "#FBBF24"
+                    if s["temps"][i] > 40
+                    else "#00D4AA"
+                    for i in range(6)
+                ]
+                tb_fig.add_trace(
+                    go.Bar(x=JOINT_LABELS, y=s["temps"], marker_color=tb_colors)
+                )
                 chart_temp_bar.update_figure(tb_fig)
 
                 # Safety
                 _update_kpi(kpi_scl, f"{s['speedScaling']:.2f}")
-                gauge_maxcur2.update_figure(make_gauge(max([abs(c) for c in s["cur"]]) if s["cur"] else 0, "Max Joint Current", 5, "#00D4AA", 3, 4.5))
-                gauge_maxtemp2.update_figure(make_gauge(max(s["temps"]) if s["temps"] else 0, "Max Joint Temp", 80, "#4895EF", 50, 70))
-                gauge_momentum2.update_figure(make_gauge(s["momentum"], "Momentum", 25, "#7B61FF", 15, 20))
+                gauge_maxcur2.update_figure(
+                    make_gauge(
+                        max([abs(c) for c in s["cur"]]) if s["cur"] else 0,
+                        "Max Joint Current",
+                        5,
+                        "#00D4AA",
+                        3,
+                        4.5,
+                    )
+                )
+                gauge_maxtemp2.update_figure(
+                    make_gauge(
+                        max(s["temps"]) if s["temps"] else 0,
+                        "Max Joint Temp",
+                        80,
+                        "#4895EF",
+                        50,
+                        70,
+                    )
+                )
+                gauge_momentum2.update_figure(
+                    make_gauge(s["momentum"], "Momentum", 25, "#7B61FF", 15, 20)
+                )
                 chart_safety.update_figure(make_safety_chart(hist))
 
                 # Safety bits — render as HTML to avoid clear/rebuild DOM thrashing
@@ -3042,15 +4745,29 @@ def build_dashboard(state: AppState):
                     label = key.replace("_", " ").title()
                     active = s["safetyBits"].get(key, 0) == 1
                     is_good = key == "normal_mode"
-                    bg = "rgba(0,212,170,0.12)" if (active and is_good) else "rgba(255,107,107,0.12)" if (active and not is_good) else "#111827"
-                    dot = "#00D4AA" if (active and is_good) else "#FF6B6B" if active else "#30363D"
+                    bg = (
+                        "rgba(0,212,170,0.12)"
+                        if (active and is_good)
+                        else "rgba(255,107,107,0.12)"
+                        if (active and not is_good)
+                        else "#111827"
+                    )
+                    dot = (
+                        "#00D4AA"
+                        if (active and is_good)
+                        else "#FF6B6B"
+                        if active
+                        else "#30363D"
+                    )
                     fw = "600" if active else "400"
                     tc = "#E6EDF3" if active else "#6E7681"
-                    bits_html += (f'<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;'
-                             f'border-radius:6px;background:{bg};border:1px solid #1E293B">'
-                             f'<div style="width:7px;height:7px;border-radius:50%;background:{dot}"></div>'
-                             f'<span style="font-size:10px;font-weight:{fw};color:{tc}">{label}</span></div>')
-                bits_html += '</div>'
+                    bits_html += (
+                        f'<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;'
+                        f'border-radius:6px;background:{bg};border:1px solid #1E293B">'
+                        f'<div style="width:7px;height:7px;border-radius:50%;background:{dot}"></div>'
+                        f'<span style="font-size:10px;font-weight:{fw};color:{tc}">{label}</span></div>'
+                    )
+                bits_html += "</div>"
                 safety_bits_content.set_content(bits_html)
 
                 rbits_html = '<div style="display:flex;gap:10px;flex-wrap:wrap">'
@@ -3060,11 +4777,13 @@ def build_dashboard(state: AppState):
                     bg = "rgba(0,212,170,0.12)" if active else "#111827"
                     dot = "#00D4AA" if active else "#30363D"
                     fw = "600" if active else "400"
-                    rbits_html += (f'<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;'
-                                  f'border-radius:6px;background:{bg};border:1px solid #1E293B">'
-                                  f'<div style="width:8px;height:8px;border-radius:50%;background:{dot}"></div>'
-                                  f'<span style="font-size:10.5px;font-weight:{fw}">{label}</span></div>')
-                rbits_html += '</div>'
+                    rbits_html += (
+                        f'<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;'
+                        f'border-radius:6px;background:{bg};border:1px solid #1E293B">'
+                        f'<div style="width:8px;height:8px;border-radius:50%;background:{dot}"></div>'
+                        f'<span style="font-size:10.5px;font-weight:{fw}">{label}</span></div>'
+                    )
+                rbits_html += "</div>"
                 robot_bits_content.set_content(rbits_html)
 
                 # Command log — snapshot under lock to avoid races with writer threads
@@ -3072,7 +4791,9 @@ def build_dashboard(state: AppState):
                     log_snapshot = list(state.ctrl_log[:20])
                 log_html = ""
                 for entry in log_snapshot:
-                    color = {"error": "#FF6B6B", "ok": "#00D4AA", "cmd": "#FBBF24"}.get(entry["type"], "#8B949E")
+                    color = {"error": "#FF6B6B", "ok": "#00D4AA", "cmd": "#FBBF24"}.get(
+                        entry["type"], "#8B949E"
+                    )
                     log_html += f'<div style="padding:2px 0; font-size:10.5px"><span style="color:#6E7681; margin-right:8px">{entry["t"]}</span><span style="color:{color}">{entry["msg"]}</span></div>'
                 if not log_html:
                     log_html = '<div style="color: #6E7681">No commands sent yet.</div>'
@@ -3093,13 +4814,28 @@ def build_dashboard(state: AppState):
                     cart_pos_label_refs[i].set_text(f"{s['tcp'].get(a, 0):.4f}")
 
                 # Digital Twin tab updates
-                twin_elapsed_label.set_text(f"{s['t']:.1f}s · {'LIVE' if state.is_live else 'DEMO'}")
+                twin_elapsed_label.set_text(
+                    f"{s['t']:.1f}s · {'LIVE' if state.is_live else 'DEMO'}"
+                )
                 _update_kpi(twin_kpi_speed, f"{s['tcpSpeed']:.3f}")
                 _update_kpi(twin_kpi_force, f"{s['forceScalar']:.1f}")
                 _update_kpi(twin_kpi_power, f"{s['power']:.0f}")
-                twin_gauge_temp.update_figure(make_gauge(max(s["temps"]), "Max Temp", 85, "#F8B739", 50, 70))
-                twin_gauge_cur.update_figure(make_gauge(max([abs(c) for c in s["cur"]]) if s["cur"] else 0, "Max Current", 5, "#00D4AA", 3, 4.5))
-                twin_gauge_mom.update_figure(make_gauge(s["momentum"], "Momentum", 25, "#7B61FF", 15, 20))
+                twin_gauge_temp.update_figure(
+                    make_gauge(max(s["temps"]), "Max Temp", 85, "#F8B739", 50, 70)
+                )
+                twin_gauge_cur.update_figure(
+                    make_gauge(
+                        max([abs(c) for c in s["cur"]]) if s["cur"] else 0,
+                        "Max Current",
+                        5,
+                        "#00D4AA",
+                        3,
+                        4.5,
+                    )
+                )
+                twin_gauge_mom.update_figure(
+                    make_gauge(s["momentum"], "Momentum", 25, "#7B61FF", 15, 20)
+                )
                 short_hist = hist[-60:]
                 twin_chart_force.update_figure(make_force_chart(short_hist))
                 twin_robot_badge.set_text(s["robotModeDesc"])
@@ -3110,53 +4846,111 @@ def build_dashboard(state: AppState):
                 if ss == "DANGER":
                     twin_safety_bar.style(
                         "padding: 8px 12px; border-radius: 8px; background: rgba(255,107,107,0.10); border: 1px solid rgba(255,107,107,0.25);"
-                        "display: flex; align-items: center; justify-content: space-between;")
-                    twin_safety_dot.style("width: 10px; height: 10px; border-radius: 50%; background: #FF6B6B;"
-                                          "box-shadow: 0 0 8px rgba(255,107,107,0.6);")
+                        "display: flex; align-items: center; justify-content: space-between;"
+                    )
+                    twin_safety_dot.style(
+                        "width: 10px; height: 10px; border-radius: 50%; background: #FF6B6B;"
+                        "box-shadow: 0 0 8px rgba(255,107,107,0.6);"
+                    )
                     twin_safety_label.set_text("⚠ DANGER — PERSON IN ZONE")
-                    twin_safety_label.style("font-size: 11px; font-weight: 700; color: #FF6B6B; letter-spacing: 0.5px")
+                    twin_safety_label.style(
+                        "font-size: 11px; font-weight: 700; color: #FF6B6B; letter-spacing: 0.5px"
+                    )
                 elif ss == "WARNING":
                     twin_safety_bar.style(
                         "padding: 8px 12px; border-radius: 8px; background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);"
-                        "display: flex; align-items: center; justify-content: space-between;")
-                    twin_safety_dot.style("width: 10px; height: 10px; border-radius: 50%; background: #FBBF24;")
+                        "display: flex; align-items: center; justify-content: space-between;"
+                    )
+                    twin_safety_dot.style(
+                        "width: 10px; height: 10px; border-radius: 50%; background: #FBBF24;"
+                    )
                     twin_safety_label.set_text("WARNING — PERSON NEARBY")
-                    twin_safety_label.style("font-size: 11px; font-weight: 700; color: #FBBF24; letter-spacing: 0.5px")
+                    twin_safety_label.style(
+                        "font-size: 11px; font-weight: 700; color: #FBBF24; letter-spacing: 0.5px"
+                    )
                 else:
                     twin_safety_bar.style(
                         "padding: 8px 12px; border-radius: 8px; background: #E8F8F0; border: 1px solid #A9DFBF;"
-                        "display: flex; align-items: center; justify-content: space-between;")
-                    twin_safety_dot.style("width: 10px; height: 10px; border-radius: 50%; background: #00D4AA;")
+                        "display: flex; align-items: center; justify-content: space-between;"
+                    )
+                    twin_safety_dot.style(
+                        "width: 10px; height: 10px; border-radius: 50%; background: #00D4AA;"
+                    )
                     twin_safety_label.set_text("ZONE CLEAR")
-                    twin_safety_label.style("font-size: 11px; font-weight: 700; color: #E6EDF3; letter-spacing: 0.5px")
+                    twin_safety_label.style(
+                        "font-size: 11px; font-weight: 700; color: #E6EDF3; letter-spacing: 0.5px"
+                    )
 
                 n_persons = len(safety.persons_detected)
-                dist_text = f"{safety.closest_distance:.2f}m" if safety.closest_distance < 100 else "—"
-                twin_safety_dist.set_text(f"{n_persons} person(s) | Closest: {dist_text}")
+                dist_text = (
+                    f"{safety.closest_distance:.2f}m"
+                    if safety.closest_distance < 100
+                    else "—"
+                )
+                twin_safety_dist.set_text(
+                    f"{n_persons} person(s) | Closest: {dist_text}"
+                )
                 if safety.gesture:
                     twin_safety_dist.set_text(
-                        f"{n_persons} person(s) | Closest: {dist_text} | Gesture: {safety.gesture.upper()}")
+                        f"{n_persons} person(s) | Closest: {dist_text} | Gesture: {safety.gesture.upper()}"
+                    )
 
             except Exception:
                 pass  # Silently skip update cycle to prevent page refresh
 
-    ui.timer(0.5, update_dashboard)  # 2 Hz — Plotly rerenders are expensive, faster rates cause browser disconnects
+    ui.timer(
+        0.5, update_dashboard
+    )  # 2 Hz — Plotly rerenders are expensive, faster rates cause browser disconnects
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  UI HELPER FUNCTIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def _fullscreen_btn(panel_element, dark=True):
-    """Add a fullscreen toggle button that targets the given panel element."""
+    """Create a fullscreen toggle button that targets a specific NiceGUI panel element.
+
+    Calls the ``toggleFullscreen`` JavaScript helper (injected by
+    :func:`build_dashboard`) on the DOM element whose id matches
+    ``panel_element.id``.
+
+    Args:
+        panel_element: NiceGUI element whose DOM node should enter/exit
+            fullscreen when the button is clicked.
+        dark (bool): If ``True``, uses dark ``fs-btn`` CSS class; if
+            ``False``, uses the lighter ``fs-btn light`` variant.  Defaults
+            to ``True``.
+
+    Returns:
+        The NiceGUI button element.
+    """
     css_class = "fs-btn" if dark else "fs-btn light"
-    btn = ui.button("⛶", on_click=lambda: ui.run_javascript(
-        f'toggleFullscreen(document.getElementById("c{panel_element.id}"))'
-    )).classes(css_class)
+    btn = ui.button(
+        "⛶",
+        on_click=lambda: ui.run_javascript(
+            f'toggleFullscreen(document.getElementById("c{panel_element.id}"))'
+        ),
+    ).classes(css_class)
     return btn
 
+
 def _kpi(label: str, value: str, unit: str):
-    """Create a KPI card and return the value label for updates."""
+    """Render a styled KPI card and return a handle to the value label for live updates.
+
+    Uses the ``.kpi-card`` / ``.kpi-label`` / ``.kpi-value`` / ``.kpi-unit``
+    CSS classes defined in ``CSS``.
+
+    Args:
+        label (str): Static metric name displayed above the value
+            (e.g. ``"TCP Speed"``).
+        value (str): Initial display value (e.g. ``"\u2014"`` or ``"0.000"``).
+        unit (str): Unit string shown after the value (e.g. ``"m/s"``).
+
+    Returns:
+        NiceGUI label element: The value label; call ``.set_text()`` on it
+            to update the displayed number.
+    """
     with ui.element("div").classes("kpi-card").style("flex: 1; min-width: 120px"):
         ui.label(label).classes("kpi-label")
         with ui.row().style("align-items: baseline; gap: 6px; margin-top: 4px"):
@@ -3166,66 +4960,148 @@ def _kpi(label: str, value: str, unit: str):
 
 
 def _kpi_mini(label: str, value: str, unit: str):
-    """Smaller KPI for the Digital Twin panel."""
+    """Render a compact KPI tile for the Digital Twin panel.
+
+    Smaller padding and font size than :func:`_kpi`, suited for the
+    constrained Digital Twin side panel.
+
+    Args:
+        label (str): Static metric name.
+        value (str): Initial display value.
+        unit (str): Unit string shown after the value.
+
+    Returns:
+        NiceGUI label element: The value label for live updates via
+            ``.set_text()``.
+    """
     with ui.element("div").style(
         "flex: 1; padding: 10px 12px; background: #0D1117; border-radius: 8px; border: 1px solid var(--border);"
     ):
-        ui.label(label).style("font-size: 9px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase")
+        ui.label(label).style(
+            "font-size: 9px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase"
+        )
         with ui.row().style("align-items: baseline; gap: 4px; margin-top: 2px"):
             val_label = ui.label(value).style(
-                "font-size: 18px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text)")
+                "font-size: 18px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text)"
+            )
             ui.label(unit).style("font-size: 10px; color: var(--subtle)")
     return val_label
 
 
 def _update_kpi(val_label, new_value: str):
+    """Update the text of a KPI value label created by :func:`_kpi` or :func:`_kpi_mini`.
+
+    Args:
+        val_label: NiceGUI label element returned by ``_kpi`` or ``_kpi_mini``.
+        new_value (str): Formatted string to display (e.g. ``"1.234"``).
+    """
     val_label.set_text(new_value)
 
 
 def _ctrl_btn(label: str, on_click_coro, color: str):
-    """Control button that runs its callback via run.io_bound to avoid blocking the event loop."""
+    """Render a styled robot-control button that offloads its callback to a thread.
+
+    Wraps *on_click_coro* in ``run.io_bound`` so that blocking robot
+    commands do not stall the asyncio event loop.
+
+    Args:
+        label (str): Button text (e.g. ``"⚡ Power On"``).
+        on_click_coro: Synchronous callable dispatched via ``run.io_bound``
+            when the button is clicked.
+        color (str): Hex background colour for the button.
+    """
+
     async def _handler():
         await run.io_bound(on_click_coro)
+
     ui.button(label, on_click=_handler).style(
         f"background: {color}; color: white; font-weight: 600; font-size: 12px;"
-        f"padding: 10px 16px; border-radius: 8px; box-shadow: 0 2px 8px {color}40;")
+        f"padding: 10px 16px; border-radius: 8px; box-shadow: 0 2px 8px {color}40;"
+    )
 
 
 def _ctrl_btn_sm(label: str, on_click_coro, color: str):
+    """Render a smaller variant of the control button (reduced padding and font size).
+
+    Identical behaviour to :func:`_ctrl_btn` but styled for tighter layouts
+    such as the Digital Twin control panel.
+
+    Args:
+        label (str): Button text.
+        on_click_coro: Synchronous callable dispatched via ``run.io_bound``.
+        color (str): Hex background colour.
+    """
+
     async def _handler():
         await run.io_bound(on_click_coro)
+
     ui.button(label, on_click=_handler).style(
         f"background: {color}; color: white; font-weight: 600; font-size: 10.5px;"
-        f"padding: 6px 10px; border-radius: 6px;")
+        f"padding: 6px 10px; border-radius: 6px;"
+    )
 
 
-def _ack_btn(label: str, command: str, state: AppState, color: str, params: Optional[Dict] = None,
-             panel_lock: Optional[list] = None):
-    """Control button with ✓/✗ acknowledgment + panel locking for the Digital Twin panel.
+def _ack_btn(
+    label: str,
+    command: str,
+    state: AppState,
+    color: str,
+    params: Optional[Dict] = None,
+    panel_lock: Optional[list] = None,
+):
+    """Render a robot-control button with visual acknowledgment and optional panel locking.
 
-    - Sends command immediately
-    - For powerOn/powerOff/brakeRelease: polls robot state to verify
-    - Locks all other buttons (except E-Stop) during execution
-    - Shows ✓ green / ✗ red that stays until next click
-    - panel_lock: list shared between all _ack_btn instances, contains [lock_flag, btn_refs]
+    On click:
+
+    1. Locks all sibling ``_ack_btn`` instances sharing *panel_lock* (shows a
+       padlock icon) to prevent concurrent commands.
+    2. Dispatches the command: uses :meth:`AppState.send_command_verified` for
+       ``powerOn``, ``powerOff``, ``brakeRelease``, ``moveJ``, ``moveL``
+       (polls until the robot reaches the expected state); falls back to
+       :meth:`AppState.send_command` for everything else.
+    3. Shows a persistent badge on the button: green ✓ (ok + verified),
+       amber ⚠ (ok but verification timed out), or red ✗ (error).
+    4. Unlocks the panel.
+
+    Args:
+        label (str): Button text.
+        command (str): Robot command string passed to ``AppState.send_command``.
+        state (AppState): Shared application state.
+        color (str): Hex base background colour.
+        params (dict | None): Optional command parameters dict.
+        panel_lock (list | None): Shared list whose first element is a
+            ``{"locked": bool}`` dict, followed by dicts for each registered
+            button.  Pass the same list to all sibling ``_ack_btn`` calls to
+            enable mutual exclusion.
     """
-    base_style = (f"background: {color}; color: white; font-weight: 600; font-size: 10.5px;"
-                  f"padding: 6px 10px; border-radius: 6px; min-width: 80px;")
-    ok_style = ("background: #00D4AA; color: #0B1120; font-weight: 600; font-size: 10.5px;"
-                "padding: 6px 10px; border-radius: 6px; min-width: 80px;")
-    err_style = ("background: #FF6B6B; color: #0B1120; font-weight: 600; font-size: 10.5px;"
-                 "padding: 6px 10px; border-radius: 6px; min-width: 80px;")
-    locked_style = ("background: #1C2333; color: #484F58; font-weight: 600; font-size: 10.5px;"
-                    "padding: 6px 10px; border-radius: 6px; min-width: 80px; cursor: not-allowed; opacity: 0.5;")
-    pending_style = (f"background: {color}; color: white; font-weight: 600; font-size: 10.5px;"
-                     f"padding: 6px 10px; border-radius: 6px; min-width: 80px; opacity: 0.6;")
+    base_style = (
+        f"background: {color}; color: white; font-weight: 600; font-size: 10.5px;"
+        f"padding: 6px 10px; border-radius: 6px; min-width: 80px;"
+    )
+    ok_style = (
+        "background: #00D4AA; color: #0B1120; font-weight: 600; font-size: 10.5px;"
+        "padding: 6px 10px; border-radius: 6px; min-width: 80px;"
+    )
+    err_style = (
+        "background: #FF6B6B; color: #0B1120; font-weight: 600; font-size: 10.5px;"
+        "padding: 6px 10px; border-radius: 6px; min-width: 80px;"
+    )
+    locked_style = (
+        "background: #1C2333; color: #484F58; font-weight: 600; font-size: 10.5px;"
+        "padding: 6px 10px; border-radius: 6px; min-width: 80px; cursor: not-allowed; opacity: 0.5;"
+    )
+    pending_style = (
+        f"background: {color}; color: white; font-weight: 600; font-size: 10.5px;"
+        f"padding: 6px 10px; border-radius: 6px; min-width: 80px; opacity: 0.6;"
+    )
 
     with ui.element("div").style("position: relative; display: inline-flex"):
         btn = ui.button(label).style(base_style)
         indicator = ui.label("").style(
             "position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;"
             "border-radius: 50%; display: none; align-items: center; justify-content: center;"
-            "font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);")
+            "font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
+        )
 
         # Register this button in the shared lock list
         if panel_lock is not None:
@@ -3249,12 +5125,21 @@ def _ack_btn(label: str, command: str, state: AppState, color: str, params: Opti
             btn.style(pending_style)
             indicator.style(
                 "position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;"
-                "border-radius: 50%; display: none;")
+                "border-radius: 50%; display: none;"
+            )
 
             # Send and verify command
-            use_verified = command in ("powerOn", "powerOff", "brakeRelease", "moveJ", "moveL")
+            use_verified = command in (
+                "powerOn",
+                "powerOff",
+                "brakeRelease",
+                "moveJ",
+                "moveL",
+            )
             if use_verified:
-                result = await run.io_bound(state.send_command_verified, command, params or {})
+                result = await run.io_bound(
+                    state.send_command_verified, command, params or {}
+                )
             else:
                 result = await run.io_bound(state.send_command, command, params or {})
 
@@ -3270,17 +5155,23 @@ def _ack_btn(label: str, command: str, state: AppState, color: str, params: Opti
                     "position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;"
                     "border-radius: 50%; display: flex; align-items: center; justify-content: center;"
                     "font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
-                    "background: #00D4AA; color: #0B1120;")
+                    "background: #00D4AA; color: #0B1120;"
+                )
             elif status == "ok" and not verified:
                 # Command sent but verification failed/timed out
-                btn.style(("background: #FBBF24; color: #0B1120; font-weight: 600; font-size: 10.5px;"
-                           "padding: 6px 10px; border-radius: 6px; min-width: 80px;"))
+                btn.style(
+                    (
+                        "background: #FBBF24; color: #0B1120; font-weight: 600; font-size: 10.5px;"
+                        "padding: 6px 10px; border-radius: 6px; min-width: 80px;"
+                    )
+                )
                 indicator.set_text("⚠")
                 indicator.style(
                     "position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;"
                     "border-radius: 50%; display: flex; align-items: center; justify-content: center;"
                     "font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
-                    "background: #FBBF24; color: #0B1120;")
+                    "background: #FBBF24; color: #0B1120;"
+                )
             else:
                 btn.style(err_style)
                 indicator.set_text("✗")
@@ -3288,7 +5179,8 @@ def _ack_btn(label: str, command: str, state: AppState, color: str, params: Opti
                     "position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;"
                     "border-radius: 50%; display: flex; align-items: center; justify-content: center;"
                     "font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"
-                    "background: #FF6B6B; color: #0B1120;")
+                    "background: #FF6B6B; color: #0B1120;"
+                )
 
             # Unlock the panel
             if panel_lock:
@@ -3302,92 +5194,248 @@ def _ack_btn(label: str, command: str, state: AppState, color: str, params: Opti
 
 
 def _jog_btn(label, state, axis, direction, speed_input, accel_input):
+    """Render a joint jog button that starts jogging on click and stops when released.
+
+    On press, assembles a 6-element speed vector with the chosen axis set to
+    ``direction * speed_input.value`` and dispatches ``"jogStart"``.
+    On release, dispatches ``"jogStop"``.
+
+    Args:
+        label (str): Button text (``"+"`` or ``"−"``).
+        state (AppState): Shared application state.
+        axis (int): Joint index 0–5.
+        direction (int): ``+1`` for positive direction, ``-1`` for negative.
+        speed_input: NiceGUI number input holding the jog speed in rad/s.
+        accel_input: NiceGUI number input holding the acceleration in rad/s².
+    """
+
     async def on_press():
-        speeds = [0]*6
+        speeds = [0] * 6
         speeds[axis] = direction * speed_input.value
-        await run.io_bound(state.send_command, "jogStart", {"speeds": speeds, "acceleration": accel_input.value})
+        await run.io_bound(
+            state.send_command,
+            "jogStart",
+            {"speeds": speeds, "acceleration": accel_input.value},
+        )
+
     async def on_release():
         await run.io_bound(state.send_command, "jogStop")
+
     color = "#4895EF" if direction > 0 else "#FF6B6B"
     ui.button(label, on_click=on_press).style(
         f"padding: 8px 12px; font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace;"
-        f"color: {color}; background: {color}10; border: 1.5px solid {color}40; border-radius: 6px; min-width: 40px")
+        f"color: {color}; background: {color}10; border: 1.5px solid {color}40; border-radius: 6px; min-width: 40px"
+    )
 
 
 def _cart_jog_btn(label, state, axis, direction, speed_input, accel_input):
+    """Render a Cartesian jog button that moves the TCP along one axis on click.
+
+    Translational axes (0–2) scale the speed by 0.1 so the slider value
+    expressed in m/s stays intuitive.  Rotational axes (3–5) use the raw
+    slider value as rad/s.
+
+    Args:
+        label (str): Button text (``"+"`` or ``"−"``).
+        state (AppState): Shared application state.
+        axis (int): Cartesian axis index: 0=X, 1=Y, 2=Z, 3=Rx, 4=Ry, 5=Rz.
+        direction (int): ``+1`` or ``-1``.
+        speed_input: NiceGUI number input holding the Cartesian jog speed.
+        accel_input: NiceGUI number input holding the acceleration.
+    """
+
     async def on_press():
-        speeds = [0]*6
+        speeds = [0] * 6
         speeds[axis] = direction * speed_input.value * (0.1 if axis < 3 else 1.0)
-        await run.io_bound(state.send_command, "jogStart", {"speeds": speeds, "acceleration": accel_input.value, "feature": 0})
+        await run.io_bound(
+            state.send_command,
+            "jogStart",
+            {"speeds": speeds, "acceleration": accel_input.value, "feature": 0},
+        )
+
     color = "#4895EF" if direction > 0 else "#FF6B6B"
     ui.button(label, on_click=on_press).style(
         f"padding: 8px 12px; font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace;"
-        f"color: {color}; background: {color}10; border: 1.5px solid {color}40; border-radius: 6px; min-width: 40px")
+        f"color: {color}; background: {color}10; border: 1.5px solid {color}40; border-radius: 6px; min-width: 40px"
+    )
 
 
 def _dio_switch(label: str, state: AppState, command: str, idx: int):
+    """Render a toggle switch that sets or clears a robot digital output.
+
+    Args:
+        label (str): Switch label shown in the UI (e.g. ``"DO 3"``).
+        state (AppState): Shared application state used to dispatch commands.
+        command (str): Digital output command string, one of
+            ``"setStandardDigitalOut"``, ``"setConfigurableDigitalOut"``, or
+            ``"setToolDigitalOut"``.
+        idx (int): Output channel index (0-based).
+    """
+
     async def _on_change(e):
         await run.io_bound(state.send_command, command, {"id": idx, "level": e.value})
+
     sw = ui.switch(label, on_change=_on_change)
     sw.style("font-size: 11px")
 
 
 async def _toggle_freedrive(state: AppState, btn):
+    """Toggle the robot between freedrive (teach) mode and normal mode.
+
+    Checks ``state.freedrive_active`` to determine the current mode and
+    dispatches either ``"freedriveMode"`` or ``"endFreedriveMode"``
+    accordingly.  Updates the button text and colour to reflect the new
+    state.
+
+    Args:
+        state (AppState): Shared application state tracking freedrive status.
+        btn: NiceGUI button element whose text and style are updated to
+            indicate active/inactive freedrive state.
+    """
     if state.freedrive_active:
         await run.io_bound(state.send_command, "endFreedriveMode")
         state.freedrive_active = False
         btn.set_text("Enable Freedrive")
-        btn.style("background: #7B61FF; color: white; font-weight: 600; padding: 12px 24px")
+        btn.style(
+            "background: #7B61FF; color: white; font-weight: 600; padding: 12px 24px"
+        )
     else:
         await run.io_bound(state.send_command, "freedriveMode")
         state.freedrive_active = True
         btn.set_text("Exit Freedrive")
-        btn.style("background: #FF6B6B; color: white; font-weight: 600; padding: 12px 24px")
+        btn.style(
+            "background: #FF6B6B; color: white; font-weight: 600; padding: 12px 24px"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def main():
+    """Parse CLI arguments, initialise all subsystems, and launch the NiceGUI web server.
+
+    Sets up:
+
+    * ``AppState`` (robot interface, RealSense camera, data logger, safety
+      monitor) with parameters from ``argparse``.
+    * Rebuilds the camera-to-base transform from ``--cam-*`` / ``--cam-look-*``
+      arguments so the module-level ``T_CAMERA_TO_BASE`` constant reflects
+      the actual physical mount.
+    * Registers NiceGUI routes: ``/`` (dashboard page), ``/video_feed``,
+      ``/depth_feed``, and ``/combined_feed`` (MJPEG streams via
+      ``starlette.responses.StreamingResponse``).
+    * Hooks ``state.start`` / ``state.shutdown`` to the NiceGUI app startup
+      and shutdown events.
+    * Calls ``ui.run`` to start the Uvicorn/NiceGUI server on ``--host:--port``.
+    """
     parser = argparse.ArgumentParser(
         description="UR5e Unified Dashboard — NiceGUI + Plotly + RTDE + RealSense",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Robot
     parser.add_argument("--ip", default="192.168.1.15", help="Robot IP address")
-    parser.add_argument("--rate", type=int, default=10, help="Telemetry sampling rate (Hz). UI refreshes at 5 Hz.")
+    parser.add_argument(
+        "--rate",
+        type=int,
+        default=10,
+        help="Telemetry sampling rate (Hz). UI refreshes at 5 Hz.",
+    )
     # Logging
-    parser.add_argument("--no-log", action="store_false", dest="log", help="Disable CSV/JSONL logging")
+    parser.add_argument(
+        "--no-log", action="store_false", dest="log", help="Disable CSV/JSONL logging"
+    )
     parser.add_argument("--outdir", default=None, help="Output directory for log files")
-    parser.add_argument("--buffer-size", type=int, default=50, dest="buffer_size", help="Log flush buffer size")
+    parser.add_argument(
+        "--buffer-size",
+        type=int,
+        default=50,
+        dest="buffer_size",
+        help="Log flush buffer size",
+    )
     # Safety
-    parser.add_argument("--safety-radius", type=float, default=1.5, dest="safety_radius",
-                        help="Safety zone radius (m) — distance from nearest robot link")
-    parser.add_argument("--warning-radius", type=float, default=2.5, dest="warning_radius",
-                        help="Warning zone radius (m) — distance from nearest robot link")
-    parser.add_argument("--model-path", default=None, dest="model_path",
-                        help="Path to OpenVINO person-detection-retail-0013.xml model")
-    parser.add_argument("--no-safety-auto", action="store_false", dest="safety_auto",
-                        help="Disable automatic robot pause/resume from safety monitor")
+    parser.add_argument(
+        "--safety-radius",
+        type=float,
+        default=1.5,
+        dest="safety_radius",
+        help="Safety zone radius (m) — distance from nearest robot link",
+    )
+    parser.add_argument(
+        "--warning-radius",
+        type=float,
+        default=2.5,
+        dest="warning_radius",
+        help="Warning zone radius (m) — distance from nearest robot link",
+    )
+    parser.add_argument(
+        "--model-path",
+        default=None,
+        dest="model_path",
+        help="Path to OpenVINO person-detection-retail-0013.xml model",
+    )
+    parser.add_argument(
+        "--no-safety-auto",
+        action="store_false",
+        dest="safety_auto",
+        help="Disable automatic robot pause/resume from safety monitor",
+    )
     # Camera pose (in robot base frame, meters) — edit these for your setup
-    parser.add_argument("--cam-x", type=float, default=3.8, dest="cam_x",
-                        help="Camera X position in robot base frame (meters, +X = forward)")
-    parser.add_argument("--cam-y", type=float, default=0.0, dest="cam_y",
-                        help="Camera Y position in robot base frame (meters, +Y = left)")
-    parser.add_argument("--cam-z", type=float, default=1.5, dest="cam_z",
-                        help="Camera Z position in robot base frame (meters, +Z = up)")
-    parser.add_argument("--cam-look-x", type=float, default=0.0, dest="cam_look_x",
-                        help="Camera look-at X (point the camera is aimed at)")
-    parser.add_argument("--cam-look-y", type=float, default=0.0, dest="cam_look_y",
-                        help="Camera look-at Y")
-    parser.add_argument("--cam-look-z", type=float, default=0.3, dest="cam_look_z",
-                        help="Camera look-at Z")
+    parser.add_argument(
+        "--cam-x",
+        type=float,
+        default=3.8,
+        dest="cam_x",
+        help="Camera X position in robot base frame (meters, +X = forward)",
+    )
+    parser.add_argument(
+        "--cam-y",
+        type=float,
+        default=0.0,
+        dest="cam_y",
+        help="Camera Y position in robot base frame (meters, +Y = left)",
+    )
+    parser.add_argument(
+        "--cam-z",
+        type=float,
+        default=1.5,
+        dest="cam_z",
+        help="Camera Z position in robot base frame (meters, +Z = up)",
+    )
+    parser.add_argument(
+        "--cam-look-x",
+        type=float,
+        default=0.0,
+        dest="cam_look_x",
+        help="Camera look-at X (point the camera is aimed at)",
+    )
+    parser.add_argument(
+        "--cam-look-y",
+        type=float,
+        default=0.0,
+        dest="cam_look_y",
+        help="Camera look-at Y",
+    )
+    parser.add_argument(
+        "--cam-look-z",
+        type=float,
+        default=0.3,
+        dest="cam_look_z",
+        help="Camera look-at Z",
+    )
     # Server
-    parser.add_argument("--port", type=int, default=8080, help="Dashboard web server port")
+    parser.add_argument(
+        "--port", type=int, default=8080, help="Dashboard web server port"
+    )
     parser.add_argument("--host", default="0.0.0.0", help="Dashboard bind address")
-    parser.add_argument("--ws-port", type=int, default=8767, dest="ws_port",
-                        help="WebSocket port for React dashboard bridge")
+    parser.add_argument(
+        "--ws-port",
+        type=int,
+        default=8767,
+        dest="ws_port",
+        help="WebSocket port for React dashboard bridge",
+    )
 
     args = parser.parse_args()
 
@@ -3405,11 +5453,21 @@ def main():
     log.info(f"  Dashboard: http://{args.host}:{args.port}")
     log.info(f"  React WS:  ws://0.0.0.0:{args.ws_port}")
     log.info(f"  RTDE: {'available' if HAS_RTDE else 'NOT INSTALLED (demo mode)'}")
-    log.info(f"  RealSense: {'available' if HAS_REALSENSE else 'NOT INSTALLED (camera disabled)'}")
-    log.info(f"  OpenVINO: {'available' if HAS_OPENVINO else 'NOT INSTALLED (person detection disabled)'}")
-    log.info(f"  MediaPipe: {'available' if HAS_MEDIAPIPE else 'NOT INSTALLED (hand gestures disabled)'}")
-    log.info(f"  Safety: radius={args.safety_radius}m, warning={args.warning_radius}m, auto={'ON' if args.safety_auto else 'OFF'}")
-    log.info(f"  Camera pose: pos={CAMERA_POS_IN_BASE} look_at={CAMERA_LOOK_AT_IN_BASE} (robot base frame)")
+    log.info(
+        f"  RealSense: {'available' if HAS_REALSENSE else 'NOT INSTALLED (camera disabled)'}"
+    )
+    log.info(
+        f"  OpenVINO: {'available' if HAS_OPENVINO else 'NOT INSTALLED (person detection disabled)'}"
+    )
+    log.info(
+        f"  MediaPipe: {'available' if HAS_MEDIAPIPE else 'NOT INSTALLED (hand gestures disabled)'}"
+    )
+    log.info(
+        f"  Safety: radius={args.safety_radius}m, warning={args.warning_radius}m, auto={'ON' if args.safety_auto else 'OFF'}"
+    )
+    log.info(
+        f"  Camera pose: pos={CAMERA_POS_IN_BASE} look_at={CAMERA_LOOK_AT_IN_BASE} (robot base frame)"
+    )
     log.info("=" * 60)
 
     state = AppState(args)
@@ -3427,8 +5485,9 @@ def main():
             if state.camera.running:
                 jpg = state.camera.get_jpeg("color", quality=80)
                 if jpg:
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
+                    yield (
+                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+                    )
             time.sleep(0.033)  # ~30 FPS cap
 
     @app.get("/video_feed")
@@ -3445,10 +5504,15 @@ def main():
                 if state.camera.running:
                     jpg = state.camera.get_jpeg("depth", quality=80)
                     if jpg:
-                        yield (b"--frame\r\n"
-                               b"Content-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
+                        yield (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+                        )
                 time.sleep(0.033)
-        return StreamingResponse(_gen_depth(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+        return StreamingResponse(
+            _gen_depth(), media_type="multipart/x-mixed-replace; boundary=frame"
+        )
 
     @app.get("/combined_feed")
     async def combined_feed():
@@ -3457,10 +5521,15 @@ def main():
                 if state.camera.running:
                     jpg = state.camera.get_jpeg("combined", quality=80)
                     if jpg:
-                        yield (b"--frame\r\n"
-                               b"Content-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
+                        yield (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+                        )
                 time.sleep(0.033)
-        return StreamingResponse(_gen_combined(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+        return StreamingResponse(
+            _gen_combined(), media_type="multipart/x-mixed-replace; boundary=frame"
+        )
 
     app.on_startup(state.start)
     app.on_shutdown(state.shutdown)

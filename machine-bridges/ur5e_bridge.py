@@ -39,16 +39,16 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 # ── Configuration ────────────────────────────────────────────────
-UR_IP             = "192.168.1.15"
-RTDE_PORT         = 30004
-DASHBOARD_PORT    = 29999
-SCRIPT_PORT       = 30001
-WS_HOST           = "0.0.0.0"
-WS_PORT           = 8766
-HTTP_PORT         = 5000
-API_KEY           = "makino-lab"
-POLL_INTERVAL     = 0.1
-RECONNECT_WAIT    = 5.0
+UR_IP = "192.168.1.15"
+RTDE_PORT = 30004
+DASHBOARD_PORT = 29999
+SCRIPT_PORT = 30001
+WS_HOST = "0.0.0.0"
+WS_PORT = 8766
+HTTP_PORT = 5000
+API_KEY = "makino-lab"
+POLL_INTERVAL = 0.1
+RECONNECT_WAIT = 5.0
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -60,20 +60,33 @@ logging.basicConfig(
 log = logging.getLogger("ur5e_bridge")
 
 # ── RTDE Constants ───────────────────────────────────────────────
-RTDE_CMD_REQUEST_PROTOCOL_VERSION      = 86   # 'V'
-RTDE_CMD_CONTROL_PACKAGE_SETUP_OUTPUTS = 79   # 'O'
-RTDE_CMD_CONTROL_PACKAGE_START         = 83   # 'S'
-RTDE_CMD_DATA_PACKAGE                  = 85   # 'U'
+RTDE_CMD_REQUEST_PROTOCOL_VERSION = 86  # 'V'
+RTDE_CMD_CONTROL_PACKAGE_SETUP_OUTPUTS = 79  # 'O'
+RTDE_CMD_CONTROL_PACKAGE_START = 83  # 'S'
+RTDE_CMD_DATA_PACKAGE = 85  # 'U'
 
 ROBOT_MODE_NAMES = {
-    -1: "NO_CONTROLLER", 0: "DISCONNECTED", 1: "CONFIRM_SAFETY",
-    2: "BOOTING", 3: "POWER_OFF", 4: "POWER_ON", 5: "IDLE",
-    6: "BACKDRIVE", 7: "RUNNING", 8: "UPDATING_FIRMWARE",
+    -1: "NO_CONTROLLER",
+    0: "DISCONNECTED",
+    1: "CONFIRM_SAFETY",
+    2: "BOOTING",
+    3: "POWER_OFF",
+    4: "POWER_ON",
+    5: "IDLE",
+    6: "BACKDRIVE",
+    7: "RUNNING",
+    8: "UPDATING_FIRMWARE",
 }
 SAFETY_MODE_NAMES = {
-    1: "NORMAL", 2: "REDUCED", 3: "PROTECTIVE_STOP",
-    4: "RECOVERY", 5: "SAFEGUARD_STOP", 6: "SYSTEM_EMERGENCY_STOP",
-    7: "ROBOT_EMERGENCY_STOP", 8: "VIOLATION", 9: "FAULT",
+    1: "NORMAL",
+    2: "REDUCED",
+    3: "PROTECTIVE_STOP",
+    4: "RECOVERY",
+    5: "SAFEGUARD_STOP",
+    6: "SYSTEM_EMERGENCY_STOP",
+    7: "ROBOT_EMERGENCY_STOP",
+    8: "VIOLATION",
+    9: "FAULT",
 }
 JOINT_LABELS = ["Base", "Shoulder", "Elbow", "Wrist 1", "Wrist 2", "Wrist 3"]
 
@@ -86,8 +99,23 @@ home()
 
 # ── Control helpers ───────────────────────────────────────────────
 
+
 def dashboard_cmd(cmd: str) -> str:
-    """Send a single Dashboard Server command and return the response."""
+    """Send a single command to the UR Dashboard Server and return its response.
+
+    Opens a new TCP connection to ``UR_IP:DASHBOARD_PORT`` for each call,
+    discards the initial welcome banner, sends *cmd* terminated with ``\\n``,
+    and reads back up to 1024 bytes of response.
+
+    Args:
+        cmd (str): Dashboard Server command string, e.g. ``"play"``,
+            ``"stop"``, or ``"get loaded program"``.
+
+    Returns:
+        str: The server's response decoded as UTF-8 and stripped of surrounding
+            whitespace.  Returns ``"ERROR: <reason>"`` if the connection or
+            send fails.
+    """
     try:
         with socket.create_connection((UR_IP, DASHBOARD_PORT), timeout=3.0) as s:
             s.recv(1024)  # welcome banner
@@ -96,10 +124,20 @@ def dashboard_cmd(cmd: str) -> str:
     except Exception as e:
         return f"ERROR: {e}"
 
+
 def send_urscript(script: str) -> None:
-    """Send a URScript program to the primary client interface (port 30001)."""
+    """Upload a URScript program to the robot's primary client interface.
+
+    Connects to ``UR_IP:SCRIPT_PORT`` (port 30001), sends the full script
+    encoded as UTF-8 followed by a newline, then closes the socket.  The
+    controller starts executing the script immediately on receipt.
+
+    Args:
+        script (str): Complete URScript source code to execute on the robot.
+    """
     with socket.create_connection((UR_IP, SCRIPT_PORT), timeout=3.0) as s:
         s.sendall((script + "\n").encode("utf-8"))
+
 
 # ── RTDE Variables to subscribe ──────────────────────────────────
 # We subscribe to ALL of these in one shot. If the controller returns
@@ -123,16 +161,34 @@ RTDE_VARIABLES = [
 
 # Type sizes for binary parsing
 TYPE_SIZES = {
-    "VECTOR6D": 48,   # 6 doubles
-    "DOUBLE":   8,
-    "INT32":    4,
-    "UINT32":   4,
-    "NOT_FOUND": 0,   # excluded from data packet
+    "VECTOR6D": 48,  # 6 doubles
+    "DOUBLE": 8,
+    "INT32": 4,
+    "UINT32": 4,
+    "NOT_FOUND": 0,  # excluded from data packet
 }
 
 # ── Socket helpers ───────────────────────────────────────────────
 
+
 def recv_exact(sock, n):
+    """Read exactly *n* bytes from *sock*, blocking until all bytes arrive.
+
+    Loops over ``sock.recv`` to handle short reads that can occur on
+    streaming sockets.  Raises immediately if the connection drops before
+    *n* bytes have been received.
+
+    Args:
+        sock (socket.socket): Connected TCP socket to read from.
+        n (int): Exact number of bytes required.
+
+    Returns:
+        bytes: Exactly *n* bytes read from the socket.
+
+    Raises:
+        ConnectionError: If the remote end closes the connection before
+            *n* bytes have been delivered.
+    """
     data = b""
     while len(data) < n:
         chunk = sock.recv(n - len(data))
@@ -141,23 +197,74 @@ def recv_exact(sock, n):
         data += chunk
     return data
 
+
 def rtde_send(sock, cmd, payload=b""):
+    """Pack and transmit a single RTDE frame over *sock*.
+
+    RTDE wire format: 2-byte big-endian total size (header + payload),
+    followed by 1-byte command byte, followed by *payload* bytes.
+
+    Args:
+        sock (socket.socket): Connected RTDE socket (port 30004).
+        cmd (int): RTDE command byte, one of the ``RTDE_CMD_*`` constants.
+        payload (bytes): Optional binary payload for the command.  Defaults
+            to an empty byte string (header-only frame).
+    """
     size = 3 + len(payload)
     sock.sendall(struct.pack(">HB", size, cmd) + payload)
 
+
 def rtde_recv(sock):
+    """Read one complete RTDE frame from *sock* and return its command and payload.
+
+    Reads the 3-byte header to determine the total frame size, then reads the
+    remaining payload bytes with :func:`recv_exact`.
+
+    Args:
+        sock (socket.socket): Connected RTDE socket with an incoming frame
+            ready to read.
+
+    Returns:
+        tuple[int, bytes]: A ``(cmd, payload)`` pair where *cmd* is the
+            1-byte RTDE command identifier and *payload* is the raw binary
+            body (empty bytes for header-only frames).
+    """
     header = recv_exact(sock, 3)
     size, cmd = struct.unpack(">HB", header[:3])
     payload = recv_exact(sock, size - 3) if size > 3 else b""
     return cmd, payload
+
 
 # ── RTDE Setup ───────────────────────────────────────────────────
 
 # Set after setup — list of (var_name, type_string) for parsing
 recipe_layout = []
 
+
 def rtde_setup(sock):
-    """Negotiate protocol, subscribe ONCE, and start streaming."""
+    """Negotiate RTDE protocol version 2, subscribe to output variables, and start streaming.
+
+    Performs the full RTDE handshake in three steps:
+
+    1. **Protocol negotiation** — requests version 2; raises ``RuntimeError``
+       if the controller rejects it.
+    2. **Output subscription** — sends all ``RTDE_VARIABLES`` in a single
+       ``CONTROL_PACKAGE_SETUP_OUTPUTS`` request and parses the returned type
+       list.  Variables the firmware does not recognise are marked
+       ``NOT_FOUND`` and excluded from subsequent data packets.  The resulting
+       ``(name, type)`` pairs are stored in the module-level
+       ``recipe_layout``.
+    3. **Stream start** — sends ``CONTROL_PACKAGE_START``; raises
+       ``RuntimeError`` if rejected.
+
+    Args:
+        sock (socket.socket): Connected TCP socket to the RTDE port
+            (``UR_IP:RTDE_PORT``).
+
+    Raises:
+        RuntimeError: If protocol version 2 is rejected, if no variables are
+            supported, or if streaming cannot be started.
+    """
     global recipe_layout
 
     # 1. Request protocol version 2
@@ -220,8 +327,24 @@ def rtde_setup(sock):
 
 
 def parse_data_package(payload):
-    """Parse a DATA_PACKAGE using recipe_layout.
-    NOT_FOUND variables are excluded from the binary payload entirely."""
+    """Deserialise a binary RTDE DATA_PACKAGE into a dict of variable values.
+
+    Walks the module-level ``recipe_layout`` in order, consuming the correct
+    number of bytes for each type (``VECTOR6D`` = 48, ``DOUBLE`` = 8,
+    ``INT32``/``UINT32`` = 4).  Variables whose type is ``NOT_FOUND`` are
+    absent from the binary payload and are mapped to ``None`` without
+    advancing the offset.  On a ``struct.error`` mid-packet the remaining
+    variables are also set to ``None`` and parsing stops.
+
+    Args:
+        payload (bytes): Raw payload bytes from an RTDE ``DATA_PACKAGE``
+            frame, including the leading recipe-ID byte.
+
+    Returns:
+        dict[str, Any]: Mapping of variable name to parsed value.  Numeric
+            scalars are Python ``int`` or ``float``; ``VECTOR6D`` entries are
+            6-element lists of floats; ``NOT_FOUND`` entries are ``None``.
+    """
     offset = 1  # skip recipe ID byte
     values = {}
 
@@ -256,10 +379,32 @@ def parse_data_package(payload):
 
 
 def build_dashboard_payload(rtde_data, program_name="—"):
-    """Convert RTDE data to the format the dashboard expects."""
-    robot_mode  = rtde_data.get("robot_mode") or -1
+    """Convert a parsed RTDE data dict to the JSON structure expected by the dashboard.
+
+    Derives a human-readable robot status (``"running"`` / ``"idle"`` /
+    ``"alarm"`` / ``"offline"``) from ``robot_mode``, ``safety_mode``, and
+    ``runtime_state``.  Builds an alarm list from elevated safety modes.
+    Converts TCP pose from metres/radians to millimetres/degrees, computes
+    TCP speed magnitude (mm/s), maps joint currents to approximate torques
+    (A × 3.0 Nm/A), and estimates total power from bus voltage and current.
+
+    Args:
+        rtde_data (dict): Output of :func:`parse_data_package` — a dict of
+            RTDE variable names to values.  Missing keys are treated as zero
+            or their safe defaults.
+        program_name (str): Name of the currently loaded ``.urp`` program,
+            obtained via :func:`get_program_name`.  Defaults to ``"—"``.
+
+    Returns:
+        dict: JSON-serialisable dashboard payload with keys including
+            ``machine``, ``status``, ``program``, ``robotMode``,
+            ``safetyMode``, ``tcpPosition``, ``tcpSpeed``, ``speedFraction``,
+            ``joints``, ``powerKw``, ``voltage``, ``current``, ``alarms``,
+            and ``digitalOutputs``.
+    """
+    robot_mode = rtde_data.get("robot_mode") or -1
     safety_mode = rtde_data.get("safety_mode") or 1
-    runtime     = rtde_data.get("runtime_state") or 0
+    runtime = rtde_data.get("runtime_state") or 0
 
     # Status logic
     if safety_mode >= 3:
@@ -284,25 +429,33 @@ def build_dashboard_payload(rtde_data, program_name="—"):
     elif safety_mode == 7:
         alarms.append("ROBOT E-STOP")
     elif safety_mode >= 8:
-        alarms.append(f"SAFETY FAULT: {SAFETY_MODE_NAMES.get(safety_mode, safety_mode)}")
+        alarms.append(
+            f"SAFETY FAULT: {SAFETY_MODE_NAMES.get(safety_mode, safety_mode)}"
+        )
 
     # TCP
-    tcp = rtde_data.get("actual_TCP_pose") or [0]*6
-    tcp_speed_vec = rtde_data.get("actual_TCP_speed") or [0]*6
+    tcp = rtde_data.get("actual_TCP_pose") or [0] * 6
+    tcp_speed_vec = rtde_data.get("actual_TCP_speed") or [0] * 6
     tcp_speed = round(math.sqrt(sum(v**2 for v in tcp_speed_vec[:3])) * 1000, 1)
 
     # Joints
-    joints_q   = rtde_data.get("actual_q") or [0]*6
-    joints_qd  = rtde_data.get("actual_qd") or [0]*6
-    joints_cur = rtde_data.get("actual_current") or [0]*6
+    joints_q = rtde_data.get("actual_q") or [0] * 6
+    joints_qd = rtde_data.get("actual_qd") or [0] * 6
+    joints_cur = rtde_data.get("actual_current") or [0] * 6
 
     joints = [
         {
-            "id":     f"J{i+1}",
-            "label":  JOINT_LABELS[i],
-            "angle":  round(math.degrees(joints_q[i]), 2) if joints_q[i] is not None else 0,
-            "speed":  round(math.degrees(joints_qd[i]), 2) if joints_qd[i] is not None else 0,
-            "torque": round(abs(joints_cur[i]) * 3.0, 1) if joints_cur[i] is not None else 0,
+            "id": f"J{i + 1}",
+            "label": JOINT_LABELS[i],
+            "angle": round(math.degrees(joints_q[i]), 2)
+            if joints_q[i] is not None
+            else 0,
+            "speed": round(math.degrees(joints_qd[i]), 2)
+            if joints_qd[i] is not None
+            else 0,
+            "torque": round(abs(joints_cur[i]) * 3.0, 1)
+            if joints_cur[i] is not None
+            else 0,
         }
         for i in range(6)
     ]
@@ -311,37 +464,59 @@ def build_dashboard_payload(rtde_data, program_name="—"):
     current = rtde_data.get("actual_robot_current") or 0.0
 
     return {
-        "machine":    "ur5e",
-        "name":       "UR5e Cobot",
-        "type":       "Collaborative Robot Arm",
-        "timestamp":  datetime.now().isoformat(),
-        "status":     status,
-        "program":    program_name,
-        "robotMode":  ROBOT_MODE_NAMES.get(robot_mode, str(robot_mode)),
+        "machine": "ur5e",
+        "name": "UR5e Cobot",
+        "type": "Collaborative Robot Arm",
+        "timestamp": datetime.now().isoformat(),
+        "status": status,
+        "program": program_name,
+        "robotMode": ROBOT_MODE_NAMES.get(robot_mode, str(robot_mode)),
         "safetyMode": SAFETY_MODE_NAMES.get(safety_mode, str(safety_mode)),
-        "runtimeState": ["STOPPED", "STOPPED", "PLAYING", "PAUSING", "PAUSED", "RESUMING"][min(runtime, 5)] if isinstance(runtime, int) else "STOPPED",
+        "runtimeState": [
+            "STOPPED",
+            "STOPPED",
+            "PLAYING",
+            "PAUSING",
+            "PAUSED",
+            "RESUMING",
+        ][min(runtime, 5)]
+        if isinstance(runtime, int)
+        else "STOPPED",
         "tcpPosition": {
-            "x":  round(tcp[0] * 1000, 2),
-            "y":  round(tcp[1] * 1000, 2),
-            "z":  round(tcp[2] * 1000, 2),
+            "x": round(tcp[0] * 1000, 2),
+            "y": round(tcp[1] * 1000, 2),
+            "z": round(tcp[2] * 1000, 2),
             "rx": round(math.degrees(tcp[3]), 2),
             "ry": round(math.degrees(tcp[4]), 2),
             "rz": round(math.degrees(tcp[5]), 2),
         },
-        "tcpSpeed":       tcp_speed,
-        "speedFraction":  round((rtde_data.get("target_speed_fraction") or 0.0) * 100, 1),
-        "joints":         joints,
-        "powerKw":        round(voltage * current / 1000.0, 3),
-        "voltage":        round(voltage, 1),
-        "current":        round(current, 2),
-        "alarms":         alarms,
+        "tcpSpeed": tcp_speed,
+        "speedFraction": round(
+            (rtde_data.get("target_speed_fraction") or 0.0) * 100, 1
+        ),
+        "joints": joints,
+        "powerKw": round(voltage * current / 1000.0, 3),
+        "voltage": round(voltage, 1),
+        "current": round(current, 2),
+        "alarms": alarms,
         "digitalOutputs": rtde_data.get("output_bit_registers0_to_31") or 0,
     }
 
 
 # ── Dashboard Server query ───────────────────────────────────────
 
-def get_program_name():
+
+def get_program_name() -> str:
+    """Query the Dashboard Server for the currently loaded program name.
+
+    Connects to ``UR_IP:DASHBOARD_PORT``, sends ``"get loaded program"``,
+    and parses the colon-separated response to extract the bare filename
+    (without the full path or ``.urp`` extension path prefix).
+
+    Returns:
+        str: The loaded program filename, or ``"—"`` if the query fails or
+            no program is loaded.
+    """
     try:
         with socket.create_connection((UR_IP, DASHBOARD_PORT), timeout=2.0) as s:
             s.recv(1024)
@@ -359,8 +534,27 @@ def get_program_name():
 connected_clients = set()
 latest_payload = {"machine": "ur5e", "status": "connecting"}
 
+
 async def handle_ws_command(cmd: dict) -> str:
-    """Handle a JSON command sent from the dashboard or any WebSocket client."""
+    """Parse and dispatch a robot-control action received from a WebSocket client.
+
+    Runs blocking Dashboard Server and URScript calls in the thread-pool
+    executor so the asyncio event loop is not blocked.  Supported actions:
+
+    * ``"play"`` / ``"stop"`` / ``"pause"`` — forwarded directly to the
+      Dashboard Server via :func:`dashboard_cmd`.
+    * ``"home"`` — uploads ``HOME_SCRIPT`` via :func:`send_urscript`.
+    * ``"load"`` — loads a ``.urp`` program by name from ``/programs/``.
+
+    Args:
+        cmd (dict): Parsed JSON object from the WebSocket client.  Must
+            contain an ``"action"`` key.  The ``"load"`` action also reads
+            a ``"program"`` key for the program filename.
+
+    Returns:
+        str: A short result/status string suitable for echoing back to the
+            client as an acknowledgement.
+    """
     loop = asyncio.get_event_loop()
     action = cmd.get("action", "")
     if action in ("play", "stop", "pause"):
@@ -370,10 +564,25 @@ async def handle_ws_command(cmd: dict) -> str:
         return "moving to home"
     elif action == "load":
         prog = cmd.get("program", "")
-        return await loop.run_in_executor(executor, dashboard_cmd, f"load /programs/{prog}.urp")
+        return await loop.run_in_executor(
+            executor, dashboard_cmd, f"load /programs/{prog}.urp"
+        )
     return f"unknown action: {action}"
 
+
 async def ws_handler(ws):
+    """Manage the lifecycle of a single WebSocket client connection.
+
+    Registers the client, sends the last-known payload immediately so the
+    dashboard is populated on connect, then forwards each inbound JSON
+    message to :func:`handle_ws_command` and echoes the result back as an
+    ``{"ack": action, "result": ...}`` JSON object.  The client is removed
+    from ``connected_clients`` on disconnect, whether clean or abrupt.
+
+    Args:
+        ws: The WebSocket connection object provided by the ``websockets``
+            server library.
+    """
     connected_clients.add(ws)
     log.info(f"Dashboard connected ({len(connected_clients)} clients)")
     try:
@@ -391,7 +600,20 @@ async def ws_handler(ws):
     finally:
         connected_clients.discard(ws)
 
+
 async def broadcast(payload):
+    """Update the cached latest state and push *payload* to all connected WebSocket clients.
+
+    Stores *payload* in the module-level ``latest_payload`` so new connections
+    receive it immediately, then concurrently sends a JSON-serialised copy to
+    every entry in ``connected_clients``.  Uses ``asyncio.gather`` with
+    ``return_exceptions=True`` so that one closed or stale connection does not
+    prevent delivery to the others.
+
+    Args:
+        payload (dict): JSON-serialisable dict to broadcast (typically the
+            output of :func:`build_dashboard_payload`).
+    """
     global latest_payload
     latest_payload = payload
     if connected_clients:
@@ -404,7 +626,19 @@ async def broadcast(payload):
 
 # ── Main polling loop ────────────────────────────────────────────
 
+
 async def ur5e_poll_loop():
+    """Main RTDE polling loop: connect, set up the stream, and broadcast telemetry.
+
+    Establishes a TCP connection to ``UR_IP:RTDE_PORT``, calls
+    :func:`rtde_setup` to negotiate protocol and subscribe to
+    ``RTDE_VARIABLES``, then continuously reads ``DATA_PACKAGE`` frames,
+    parses them with :func:`parse_data_package`, and broadcasts the result
+    via :func:`broadcast`.  The program name is refreshed every 50 frames
+    (~5 s at 10 Hz) via a background executor call to avoid blocking the
+    event loop.  On any connection or parsing error the loop waits
+    ``RECONNECT_WAIT`` seconds before retrying from scratch.
+    """
     program_name = "—"
     counter = 0
 
@@ -438,7 +672,9 @@ async def ur5e_poll_loop():
 
         except (ConnectionError, OSError, socket.error, RuntimeError) as e:
             log.warning(f"UR5e connection issue: {e}. Retrying in {RECONNECT_WAIT}s...")
-            await broadcast({"machine": "ur5e", "status": "offline", "alarms": [str(e)]})
+            await broadcast(
+                {"machine": "ur5e", "status": "offline", "alarms": [str(e)]}
+            )
         finally:
             if sock:
                 try:
@@ -450,11 +686,37 @@ async def ur5e_poll_loop():
 
 # ── Flask Siri/HTTP bridge ────────────────────────────────────────
 
+
 def make_flask_app():
+    """Create and return a Flask application exposing Siri / REST robot-control endpoints.
+
+    All mutating routes (``/play``, ``/stop``, ``/pause``, ``/home``,
+    ``/load/<program_name>``) require the ``X-API-Key`` header to equal
+    ``API_KEY``; the ``/status`` GET route is unauthenticated.
+
+    Route inner functions:
+
+    * **check_key()** — aborts with HTTP 401 if the API-key header is absent
+      or wrong.
+    * **play()** / **stop()** / **pause()** — POST; forward the matching
+      Dashboard Server command and return a JSON status + timestamp.
+    * **home()** — POST; uploads ``HOME_SCRIPT`` via :func:`send_urscript`
+      to move the robot to the home configuration.
+    * **load(program_name)** — POST; loads the named ``.urp`` program from
+      the controller's ``/programs/`` directory.
+    * **status()** — GET; returns the most recent ``latest_payload`` without
+      requiring authentication.
+
+    Returns:
+        Flask | None: A configured Flask app instance, or ``None`` if Flask
+            is not installed.
+    """
     try:
-        from flask import Flask, request, jsonify, abort
+        from flask import Flask, abort, jsonify, request
     except ImportError:
-        log.warning("Flask not installed — Siri HTTP bridge disabled.  Run: pip install flask")
+        log.warning(
+            "Flask not installed — Siri HTTP bridge disabled.  Run: pip install flask"
+        )
         return None
 
     app = Flask(__name__)
@@ -466,17 +728,23 @@ def make_flask_app():
     @app.route("/play", methods=["POST"])
     def play():
         check_key()
-        return jsonify({"status": dashboard_cmd("play"), "timestamp": datetime.now().isoformat()})
+        return jsonify(
+            {"status": dashboard_cmd("play"), "timestamp": datetime.now().isoformat()}
+        )
 
     @app.route("/stop", methods=["POST"])
     def stop():
         check_key()
-        return jsonify({"status": dashboard_cmd("stop"), "timestamp": datetime.now().isoformat()})
+        return jsonify(
+            {"status": dashboard_cmd("stop"), "timestamp": datetime.now().isoformat()}
+        )
 
     @app.route("/pause", methods=["POST"])
     def pause():
         check_key()
-        return jsonify({"status": dashboard_cmd("pause"), "timestamp": datetime.now().isoformat()})
+        return jsonify(
+            {"status": dashboard_cmd("pause"), "timestamp": datetime.now().isoformat()}
+        )
 
     @app.route("/home", methods=["POST"])
     def home():
@@ -503,7 +771,17 @@ def make_flask_app():
 
 # ── Entry point ──────────────────────────────────────────────────
 
+
 async def main():
+    """Async entry point: start the Flask HTTP server, WebSocket server, and RTDE poll loop.
+
+    1. Calls :func:`make_flask_app` and, if Flask is available, starts it in
+       a background daemon thread bound to ``0.0.0.0:HTTP_PORT``.
+    2. Binds a ``websockets`` server on ``WS_HOST:WS_PORT`` (falls back to
+       the legacy ``websockets.serve`` API if the newer
+       ``websockets.asyncio.server.serve`` is not available).
+    3. Runs :func:`ur5e_poll_loop` indefinitely inside the same event loop.
+    """
     log.info(f"UR5e bridge starting")
     log.info(f"  Robot:     {UR_IP}:{RTDE_PORT}")
     log.info(f"  WebSocket: ws://0.0.0.0:{WS_PORT}")
@@ -513,7 +791,9 @@ async def main():
     flask_app = make_flask_app()
     if flask_app:
         threading.Thread(
-            target=lambda: flask_app.run(host="0.0.0.0", port=HTTP_PORT, debug=False, threaded=True),
+            target=lambda: flask_app.run(
+                host="0.0.0.0", port=HTTP_PORT, debug=False, threaded=True
+            ),
             daemon=True,
         ).start()
         log.info(f"Siri endpoints (header X-API-Key: {API_KEY}):")
@@ -525,14 +805,17 @@ async def main():
 
     try:
         from websockets.asyncio.server import serve
+
         async with serve(ws_handler, WS_HOST, WS_PORT):
             log.info(f"WebSocket live on ws://0.0.0.0:{WS_PORT} ✓")
             await ur5e_poll_loop()
     except ImportError:
         import websockets
+
         async with websockets.serve(ws_handler, WS_HOST, WS_PORT):
             log.info(f"WebSocket live on ws://0.0.0.0:{WS_PORT} ✓")
             await ur5e_poll_loop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

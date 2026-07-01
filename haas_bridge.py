@@ -51,8 +51,8 @@ import json
 import logging
 import re
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass, field
@@ -74,6 +74,7 @@ except ImportError:
 
 try:
     from haas_alarm_db import get_alarm_info, parse_alarm_text
+
     _ALARM_DB_AVAILABLE = True
 except ImportError:
     _ALARM_DB_AVAILABLE = False
@@ -98,21 +99,33 @@ except ImportError:
             return []
         upper = text.strip().upper()
         if upper in ("ALARM ON", "ALARM"):
-            return [{
-                "code": 0, "title": "ALARM ACTIVE (code unknown)",
-                "severity": "warning", "category": "System", "machine": "both",
-                "causes": ["Alarm active — check HAAS screen for specific code"],
-                "checks": ["View alarm screen on HAAS control"],
-                "recovery": ["Press RESET on the HAAS control"],
-            }]
-        nums = re.findall(r'\b(\d{3,4})\b', upper)
+            return [
+                {
+                    "code": 0,
+                    "title": "ALARM ACTIVE (code unknown)",
+                    "severity": "warning",
+                    "category": "System",
+                    "machine": "both",
+                    "causes": ["Alarm active — check HAAS screen for specific code"],
+                    "checks": ["View alarm screen on HAAS control"],
+                    "recovery": ["Press RESET on the HAAS control"],
+                }
+            ]
+        nums = re.findall(r"\b(\d{3,4})\b", upper)
         results = [get_alarm_info(int(n)) for n in nums if 100 <= int(n) <= 9999]
         if not results and "ALARM" in upper:
-            return [{
-                "code": 0, "title": text.strip(),
-                "severity": "warning", "category": "System", "machine": "both",
-                "causes": [text.strip()], "checks": [], "recovery": ["Press RESET"],
-            }]
+            return [
+                {
+                    "code": 0,
+                    "title": text.strip(),
+                    "severity": "warning",
+                    "category": "System",
+                    "machine": "both",
+                    "causes": [text.strip()],
+                    "checks": [],
+                    "recovery": ["Press RESET"],
+                }
+            ]
         return results
 
 
@@ -120,20 +133,20 @@ except ImportError:
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-HAAS_IP           = "192.168.1.50"
-HAAS_PORT         = 5051
-MTCONNECT_PORT    = 8082          # Used for alarm detail in Tier 4
+HAAS_IP = "192.168.1.50"
+HAAS_PORT = 5051
+MTCONNECT_PORT = 8082  # Used for alarm detail in Tier 4
 
-WS_HOST           = "0.0.0.0"    # Bind all interfaces → reach at 192.168.1.16:8765
-WS_PORT           = 8765
+WS_HOST = "0.0.0.0"  # Bind all interfaces → reach at 192.168.1.16:8765
+WS_PORT = 8765
 
 # Tier collection intervals (seconds)
-T1_INTERVAL       = 1.0           # Spindle, position, overrides
-T2_INTERVAL       = 10.0          # Mode, timers, tool wear
-T3_INTERVAL       = 30.0          # Static machine info, all tool geometry
-T4_INTERVAL       = 120.0         # Diagnostics + full alarm sweep
+T1_INTERVAL = 1.0  # Spindle, position, overrides
+T2_INTERVAL = 10.0  # Mode, timers, tool wear
+T3_INTERVAL = 30.0  # Static machine info, all tool geometry
+T4_INTERVAL = 120.0  # Diagnostics + full alarm sweep
 
-RECONNECT_DELAY   = 5.0           # Seconds before retry after connection loss
+RECONNECT_DELAY = 5.0  # Seconds before retry after connection loss
 
 # Set to None to disable CSV logging, or a Path to enable
 CSV_LOG_DIR: Optional[Path] = Path("./cnc_logs")
@@ -153,6 +166,7 @@ log = logging.getLogger("haas_bridge")
 # MACHINE STATE  (replaces haas_data_shared.json)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class MachineState:
     """
@@ -160,32 +174,34 @@ class MachineState:
     Replaces the JSON file middleman — data lives here and is pushed
     directly over WebSocket whenever a tier updates.
     """
-    tier1: Dict[str, Any]             = field(default_factory=dict)
-    tier2: Dict[str, Any]             = field(default_factory=dict)
-    tier3: Dict[str, Any]             = field(default_factory=dict)
-    tier4: Dict[str, Any]             = field(default_factory=dict)
-    active_alarms: List[Dict]         = field(default_factory=list)
-    alarm_history: List[Dict]         = field(default_factory=list)
-    connected: bool                   = False
-    last_update: str                  = ""
+
+    tier1: Dict[str, Any] = field(default_factory=dict)
+    tier2: Dict[str, Any] = field(default_factory=dict)
+    tier3: Dict[str, Any] = field(default_factory=dict)
+    tier4: Dict[str, Any] = field(default_factory=dict)
+    active_alarms: List[Dict] = field(default_factory=list)
+    alarm_history: List[Dict] = field(default_factory=list)
+    connected: bool = False
+    last_update: str = ""
 
     def snapshot(self) -> Dict[str, Any]:
         """Full snapshot for new WebSocket clients on connect."""
         return {
-            "tier1":         self.tier1,
-            "tier2":         self.tier2,
-            "tier3":         self.tier3,
-            "tier4":         self.tier4,
+            "tier1": self.tier1,
+            "tier2": self.tier2,
+            "tier3": self.tier3,
+            "tier4": self.tier4,
             "active_alarms": self.active_alarms,
             "alarm_history": self.alarm_history[:50],
-            "connected":     self.connected,
-            "timestamp":     self.last_update,
+            "connected": self.connected,
+            "timestamp": self.last_update,
         }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HAAS BRIDGE
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class HaasBridge:
     """
@@ -202,7 +218,7 @@ class HaasBridge:
         # Async TCP connection to HAAS
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
-        self._socket_lock = asyncio.Lock()   # Serialize all HAAS socket access
+        self._socket_lock = asyncio.Lock()  # Serialize all HAAS socket access
 
         # WebSocket clients
         self._clients: Set[Any] = set()
@@ -256,6 +272,7 @@ class HaasBridge:
         return False
 
     async def disconnect(self):
+        """Close the async TCP connection to the HAAS and reset connection state."""
         if self._writer:
             try:
                 self._writer.close()
@@ -281,7 +298,9 @@ class HaasBridge:
         if not self._writer:
             return
         try:
-            self._writer.write((command.strip() + "\r\n").encode("ascii", errors="ignore"))
+            self._writer.write(
+                (command.strip() + "\r\n").encode("ascii", errors="ignore")
+            )
             await self._writer.drain()
             await asyncio.sleep(0.5)
             try:
@@ -321,7 +340,9 @@ class HaasBridge:
 
             # 2. Send command
             try:
-                self._writer.write((command.strip() + "\r\n").encode("ascii", errors="ignore"))
+                self._writer.write(
+                    (command.strip() + "\r\n").encode("ascii", errors="ignore")
+                )
                 await self._writer.drain()
             except Exception:
                 return ""
@@ -407,13 +428,21 @@ class HaasBridge:
         return result
 
     def _parse_simple(self, resp: str) -> str:
-        """"LABEL, value" → "value" """
+        """Extract the value field from a two-part ``"LABEL, value"`` HAAS response.
+
+        Args:
+            resp: Raw comma-separated response string from a Q-command.
+
+        Returns:
+            The trimmed value string, or the raw response if no comma is found.
+        """
         if not resp:
             return ""
         parts = resp.split(",")
         return parts[1].strip() if len(parts) >= 2 else resp.strip()
 
     def _parse_int(self, resp: str) -> int:
+        """Parse a simple HAAS response to a Python int (0 on failure)."""
         try:
             return int(float(self._parse_simple(resp)))
         except Exception:
@@ -444,32 +473,32 @@ class HaasBridge:
         # Program + status + parts count
         q500_raw = await self.send_command("?Q500")
         q500 = self._parse_q500(q500_raw)
-        data["program_name"]        = q500.get("program_name", "")
-        data["execution_status"]    = q500.get("execution_status", "")
+        data["program_name"] = q500.get("program_name", "")
+        data["execution_status"] = q500.get("execution_status", "")
         data["current_alarm_codes"] = q500.get("current_alarm_codes", "")
-        data["parts_count_total"]   = q500.get("parts_count_total", 0)
+        data["parts_count_total"] = q500.get("parts_count_total", 0)
 
         # Spindle
-        data["spindle_speed_rpm"]        = await self.get_var(3027)
-        data["spindle_load_percent"]     = await self.get_var(1098)
+        data["spindle_speed_rpm"] = await self.get_var(3027)
+        data["spindle_load_percent"] = await self.get_var(1098)
         data["spindle_override_percent"] = await self.get_var(62540)
 
         # Feed
-        data["feed_override_percent"]    = await self.get_var(62590)
+        data["feed_override_percent"] = await self.get_var(62590)
 
         # Work coordinates
-        data["x_work_coord"]             = await self.get_var(5041)
-        data["z_work_coord"]             = await self.get_var(5042)
+        data["x_work_coord"] = await self.get_var(5041)
+        data["z_work_coord"] = await self.get_var(5042)
 
         # Axis loads
-        data["x_axis_load_percent"]      = await self.get_var(1064)
-        data["z_axis_load_percent"]      = await self.get_var(1066)
+        data["x_axis_load_percent"] = await self.get_var(1064)
+        data["z_axis_load_percent"] = await self.get_var(1066)
 
         # Active tool + geometry offsets
-        data["current_tool_number"]      = await self.get_var(3026)
+        data["current_tool_number"] = await self.get_var(3026)
         tool = int(data["current_tool_number"] or 1)
-        data["active_tool_x_geometry"]   = await self.get_var(2001 + (tool - 1))
-        data["active_tool_z_geometry"]   = await self.get_var(2101 + (tool - 1))
+        data["active_tool_x_geometry"] = await self.get_var(2001 + (tool - 1))
+        data["active_tool_z_geometry"] = await self.get_var(2101 + (tool - 1))
 
         return data
 
@@ -485,24 +514,24 @@ class HaasBridge:
         data["machine_mode"] = self._parse_simple(q104)
 
         # Timers
-        data["present_part_time_seconds"]  = await self.get_var(3023)
-        data["total_feed_time_seconds"]    = await self.get_var(3021)
+        data["present_part_time_seconds"] = await self.get_var(3023)
+        data["total_feed_time_seconds"] = await self.get_var(3021)
         data["total_spindle_time_seconds"] = await self.get_var(3022)
 
         # Active tool wear + life
         tool = int(await self.get_var(3026) or 1)
-        data["active_tool_x_wear"]         = await self.get_var(2201 + (tool - 1))
+        data["active_tool_x_wear"] = await self.get_var(2201 + (tool - 1))
         data["active_tool_life_remaining"] = await self.get_var(5701 + (tool - 1))
 
         # Operator coordinates (negative of work coords on TL-1)
-        data["x_operator_coord"]           = await self.get_var(5081)
-        data["z_operator_coord"]           = await self.get_var(5082)
+        data["x_operator_coord"] = await self.get_var(5081)
+        data["z_operator_coord"] = await self.get_var(5082)
 
         # Control mode flags
-        data["single_block_mode"]          = await self.get_var(3030)
-        data["block_delete_mode"]          = await self.get_var(3032)
-        data["optional_stop_mode"]         = await self.get_var(3033)
-        data["rapid_override_percent"]     = await self.get_var(62591)
+        data["single_block_mode"] = await self.get_var(3030)
+        data["block_delete_mode"] = await self.get_var(3032)
+        data["optional_stop_mode"] = await self.get_var(3033)
+        data["rapid_override_percent"] = await self.get_var(62591)
 
         return data
 
@@ -515,30 +544,30 @@ class HaasBridge:
 
         # Machine identity
         q100 = await self.send_command("?Q100")
-        data["serial_number"]        = self._parse_simple(q100)
+        data["serial_number"] = self._parse_simple(q100)
         q102 = await self.send_command("?Q102")
-        data["model_name"]           = self._parse_simple(q102)
+        data["model_name"] = self._parse_simple(q102)
 
         # Cumulative timers
         q300 = await self.send_command("?Q300")
-        data["power_on_time"]        = self._parse_simple(q300)
+        data["power_on_time"] = self._parse_simple(q300)
         q301 = await self.send_command("?Q301")
-        data["motion_time"]          = self._parse_simple(q301)
+        data["motion_time"] = self._parse_simple(q301)
 
         # Counters
         q200 = await self.send_command("?Q200")
-        data["total_tool_changes"]   = self._parse_int(q200)
+        data["total_tool_changes"] = self._parse_int(q200)
         q402 = await self.send_command("?Q402")
-        data["m30_counter_1"]        = self._parse_int(q402)
+        data["m30_counter_1"] = self._parse_int(q402)
         q403 = await self.send_command("?Q403")
-        data["m30_counter_2"]        = self._parse_int(q403)
+        data["m30_counter_2"] = self._parse_int(q403)
 
         # Cycle times
         data["last_part_time_seconds"] = await self.get_var(3024)
 
         # Surface speed + chip load (only valid when cutting)
-        data["surface_speed_fpm"]    = await self.get_var(62530)
-        data["chip_load_ipt"]        = await self.get_var(62531)
+        data["surface_speed_fpm"] = await self.get_var(62530)
+        data["chip_load_ipt"] = await self.get_var(62531)
 
         # All 12 tool offsets (skip active tool — already in Tier 1)
         active_tool = int(await self.get_var(3026) or 1)
@@ -546,9 +575,9 @@ class HaasBridge:
             if n == active_tool:
                 continue
             p = f"tool_{n}"
-            data[f"{p}_x_geometry"]     = await self.get_var(2001 + n - 1)
-            data[f"{p}_z_geometry"]     = await self.get_var(2101 + n - 1)
-            data[f"{p}_x_wear"]         = await self.get_var(2201 + n - 1)
+            data[f"{p}_x_geometry"] = await self.get_var(2001 + n - 1)
+            data[f"{p}_z_geometry"] = await self.get_var(2101 + n - 1)
+            data[f"{p}_x_wear"] = await self.get_var(2201 + n - 1)
             data[f"{p}_life_remaining"] = await self.get_var(5701 + n - 1)
 
         return data
@@ -575,7 +604,7 @@ class HaasBridge:
         # Merge + update alarm state
         self._update_alarm_state(alarm_text, mtc_alarms)
         data["active_alarms"] = self._current_alarms
-        data["alarm_count"]   = len(self._current_alarms)
+        data["alarm_count"] = len(self._current_alarms)
 
         # Power-on time refresh
         q300 = await self.send_command("?Q300")
@@ -606,6 +635,18 @@ class HaasBridge:
             return []
 
     def _parse_mtconnect_xml(self, xml_data: str) -> List[Dict[str, Any]]:
+        """Parse an MTConnect /current XML response into a list of alarm dicts.
+
+        Strips XML namespaces before parsing to simplify element lookup.
+        Extracts ``Fault``, ``Warning``, and ``Alarm`` elements.
+
+        Args:
+            xml_data: Raw XML string from the MTConnect endpoint.
+
+        Returns:
+            List of alarm dicts with ``code``, ``title``, ``severity``,
+            ``source``, and ``timestamp`` fields; empty list on parse error.
+        """
         alarms: List[Dict[str, Any]] = []
         try:
             # Strip namespace declarations for simpler parsing
@@ -621,8 +662,22 @@ class HaasBridge:
             log.debug("MTConnect XML parse error: %s", e)
         return alarms
 
-    def _extract_mtconnect_alarm(self, elem: Any, tag_type: str) -> Optional[Dict[str, Any]]:
-        text        = (elem.text or "").strip()
+    def _extract_mtconnect_alarm(
+        self, elem: Any, tag_type: str
+    ) -> Optional[Dict[str, Any]]:
+        """Convert a single MTConnect alarm/fault XML element to an alarm dict.
+
+        Extracts the numeric alarm code from ``nativeCode`` or the element text,
+        then enriches it with database info from :func:`get_alarm_info`.
+
+        Args:
+            elem:     XML element (``Fault``, ``Warning``, or ``Alarm``).
+            tag_type: String tag name used to classify severity.
+
+        Returns:
+            Alarm dict with database fields merged with source/timestamp metadata.
+        """
+        text = (elem.text or "").strip()
         native_code = elem.get("nativeCode", "")
 
         # Extract numeric alarm code
@@ -639,12 +694,20 @@ class HaasBridge:
             if nums:
                 alarm_code = int(nums[0])
 
-        db = get_alarm_info(alarm_code) if alarm_code > 0 else {
-            "code": 0, "title": text or "Unknown Alarm",
-            "severity": "warning" if tag_type == "Warning" else "critical",
-            "category": "System", "machine": "both",
-            "causes": [text or "Unknown"], "checks": [], "recovery": ["Press RESET"],
-        }
+        db = (
+            get_alarm_info(alarm_code)
+            if alarm_code > 0
+            else {
+                "code": 0,
+                "title": text or "Unknown Alarm",
+                "severity": "warning" if tag_type == "Warning" else "critical",
+                "category": "System",
+                "machine": "both",
+                "causes": [text or "Unknown"],
+                "checks": [],
+                "recovery": ["Press RESET"],
+            }
+        )
         return {
             **db,
             "text": text,
@@ -676,38 +739,44 @@ class HaasBridge:
                 code = a.get("code", 0)
                 if code not in new_codes:
                     new_codes.add(code)
-                    a.update({
-                        "source": "q500",
-                        "timestamp": datetime.now().isoformat(),
-                        "text": q500_text,
-                    })
+                    a.update(
+                        {
+                            "source": "q500",
+                            "timestamp": datetime.now().isoformat(),
+                            "text": q500_text,
+                        }
+                    )
                     new_alarms.append(a)
 
         now = datetime.now().isoformat()
         appeared = new_codes - self._last_alarm_codes
-        cleared  = self._last_alarm_codes - new_codes
+        cleared = self._last_alarm_codes - new_codes
 
         # Log newly appeared alarms
         for a in new_alarms:
             if a.get("code", 0) in appeared or not self._last_alarm_codes:
-                self._alarm_history.appendleft({**a, "event": "triggered", "event_time": now})
+                self._alarm_history.appendleft(
+                    {**a, "event": "triggered", "event_time": now}
+                )
 
         # Log cleared alarms
         for code in cleared:
             if code > 0:
                 info = get_alarm_info(code)
-                self._alarm_history.appendleft({
-                    "code": code,
-                    "title": info.get("title", f"ALARM {code}"),
-                    "severity": info.get("severity", "warning"),
-                    "category": info.get("category", "System"),
-                    "event": "cleared",
-                    "event_time": now,
-                    "source": "state_change",
-                })
+                self._alarm_history.appendleft(
+                    {
+                        "code": code,
+                        "title": info.get("title", f"ALARM {code}"),
+                        "severity": info.get("severity", "warning"),
+                        "category": info.get("category", "System"),
+                        "event": "cleared",
+                        "event_time": now,
+                        "source": "state_change",
+                    }
+                )
 
         self._last_alarm_codes = new_codes
-        self._current_alarms   = new_alarms
+        self._current_alarms = new_alarms
         self.state.active_alarms = new_alarms
         self.state.alarm_history = list(self._alarm_history)
 
@@ -718,14 +787,14 @@ class HaasBridge:
     async def _raw_cmd(self, haas_cmd: str) -> Dict[str, Any]:
         """Send a raw MDC E-code or Q600 SET command and return result dict."""
         start = time.monotonic()
-        resp  = await self.send_command(haas_cmd, read_timeout=2.0)
-        ms    = int((time.monotonic() - start) * 1000)
-        ok    = bool(resp)
+        resp = await self.send_command(haas_cmd, read_timeout=2.0)
+        ms = int((time.monotonic() - start) * 1000)
+        ok = bool(resp)
         log.info("[CMD] %s → %s (%d ms)", haas_cmd, "OK" if ok else "NO RESPONSE", ms)
         return {
-            "success":   ok,
-            "command":   haas_cmd,
-            "response":  resp,
+            "success": ok,
+            "command": haas_cmd,
+            "response": resp,
             "elapsed_ms": ms,
             "timestamp": datetime.now().isoformat(),
         }
@@ -802,16 +871,27 @@ class HaasBridge:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _save_csv(self, tier: int, data: Dict[str, Any]):
+        """Append scalar values from a tier data dict to a date-stamped CSV file.
+
+        Creates ``CSV_LOG_DIR/haas_tier{N}_YYYYMMDD.csv`` if it does not exist,
+        writing a header row on first use. Non-scalar values (lists, dicts) are
+        silently skipped. Does nothing when ``CSV_LOG_DIR`` is ``None``.
+
+        Args:
+            tier: Tier number (1–4) used in the filename.
+            data: Dict of variable names to values collected in this tier.
+        """
         if not CSV_LOG_DIR or not data:
             return
         # Only log scalar values to CSV
         csv_data = {
-            k: v for k, v in data.items()
+            k: v
+            for k, v in data.items()
             if isinstance(v, (str, int, float, bool)) or v is None
         }
         date_str = datetime.now().strftime("%Y%m%d")
         path = CSV_LOG_DIR / f"haas_tier{tier}_{date_str}.csv"
-        row  = {"timestamp": datetime.now().isoformat(), **csv_data}
+        row = {"timestamp": datetime.now().isoformat(), **csv_data}
         fieldnames = ["timestamp"] + sorted(csv_data)
         try:
             file_exists = path.exists()
@@ -853,10 +933,15 @@ class HaasBridge:
 
         # Send current state immediately so the dashboard doesn't wait
         try:
-            await websocket.send(json.dumps({
-                "type": "full_state",
-                "data": self.state.snapshot(),
-            }, default=str))
+            await websocket.send(
+                json.dumps(
+                    {
+                        "type": "full_state",
+                        "data": self.state.snapshot(),
+                    },
+                    default=str,
+                )
+            )
         except Exception:
             pass
 
@@ -865,17 +950,19 @@ class HaasBridge:
                 try:
                     msg = json.loads(raw)
                     result = await self.handle_client_command(msg)
-                    await websocket.send(json.dumps(
-                        {"type": "cmd_result", "data": result}, default=str
-                    ))
+                    await websocket.send(
+                        json.dumps({"type": "cmd_result", "data": result}, default=str)
+                    )
                 except json.JSONDecodeError:
-                    await websocket.send(json.dumps(
-                        {"type": "error", "message": "Invalid JSON from client"}
-                    ))
+                    await websocket.send(
+                        json.dumps(
+                            {"type": "error", "message": "Invalid JSON from client"}
+                        )
+                    )
                 except Exception as e:
-                    await websocket.send(json.dumps(
-                        {"type": "error", "message": str(e)}
-                    ))
+                    await websocket.send(
+                        json.dumps({"type": "error", "message": str(e)})
+                    )
         except Exception:
             pass  # Client disconnected
         finally:
@@ -917,7 +1004,7 @@ class HaasBridge:
 
                 if now - last_t1 >= T1_INTERVAL:
                     t1 = await self.collect_tier1()
-                    self.state.tier1       = t1
+                    self.state.tier1 = t1
                     self.state.last_update = datetime.now().isoformat()
                     last_t1 = now
                     await self._broadcast({"type": "tier1", "data": t1})
@@ -944,7 +1031,7 @@ class HaasBridge:
                     await self._broadcast({"type": "tier4", "data": t4})
                     self._save_csv(4, t4)
 
-                await asyncio.sleep(0.02)   # 50 Hz tick
+                await asyncio.sleep(0.02)  # 50 Hz tick
 
             except (ConnectionResetError, BrokenPipeError, OSError) as e:
                 log.warning("HAAS connection lost: %s — reconnecting...", e)
@@ -975,6 +1062,7 @@ class HaasBridge:
 
     @staticmethod
     def _print_banner():
+        """Print startup configuration summary to the logger."""
         lines = [
             "=" * 58,
             "  HAAS TL-1 Direct WebSocket Bridge",
@@ -1019,7 +1107,9 @@ class HaasBridge:
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def main():
+    """Entry point: instantiate :class:`HaasBridge` and run until Ctrl+C."""
     bridge = HaasBridge()
     try:
         asyncio.run(bridge.run())

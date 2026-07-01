@@ -31,20 +31,51 @@ const FLOOR_SHORT: Record<Floor, string> = {
   2: 'FL 2',
 };
 
-// Basement uses amber; floors use blue
+/**
+ * Returns the accent text/stroke color for a given floor level.
+ * Basement (0) uses amber (`#fb923c`); floors 1 and 2 use blue (`#93c5fd`).
+ */
 function floorAccentColor(floor: Floor): string {
   return floor === 0 ? '#fb923c' : '#93c5fd';
 }
+/**
+ * Returns the oklch background tint color used for the active floor
+ * button and toolbar accent. Basement → warm amber tint; floors 1/2 → cool blue tint.
+ */
 function floorAccentBg(floor: Floor): string {
   return floor === 0 ? 'oklch(0.65 0.18 50 / 20%)' : 'oklch(0.65 0.18 220 / 20%)';
 }
+/**
+ * Returns the oklch border color for the active floor switcher button.
+ * Basement → amber border; floors 1/2 → blue border.
+ */
 function floorAccentBorder(floor: Floor): string {
   return floor === 0 ? 'oklch(0.65 0.18 50 / 40%)' : 'oklch(0.65 0.18 220 / 40%)';
 }
+/**
+ * Returns the dot indicator color shown in the bottom-left floor breadcrumb.
+ * Matches the floor accent: amber for basement, blue for floors 1/2.
+ */
 function floorDotColor(floor: Floor): string {
   return floor === 0 ? '#fb923c' : '#60a5fa';
 }
 
+/**
+ * Two-mode building viewer with framer-motion transitions.
+ *
+ * - **Elevation mode** (default): renders a 3D `BuildingElevation` overview.
+ *   Clicking a floor triggers an 80 ms transition into floor plan mode.
+ * - **Floor plan mode**: renders the 2D `FloorPlan` for the active floor.
+ *   A back button returns to elevation mode; a floor switcher in the
+ *   toolbar allows jumping between Basement, Floor 1, and Floor 2.
+ *
+ * A bottom-left breadcrumb badge indicates the active floor level when
+ * in floor plan mode.
+ *
+ * @param zones          - All building zones passed through to the child viewers.
+ * @param selectedZoneId - ID of the currently selected zone.
+ * @param onSelectZone   - Callback invoked when a zone is selected on the floor plan.
+ */
 export function FloorPlanViewer({ zones, selectedZoneId, onSelectZone }: FloorPlanViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('elevation');
   const [activeFloor, setActiveFloor] = useState<Floor>(1);
