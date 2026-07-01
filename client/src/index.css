@@ -1,0 +1,263 @@
+/* ============================================================
+   DESIGN SYSTEM: Aerospace HMI / SCADA Control Room
+   - Deep space navy base: #050E1A → #0D1F3C
+   - Accent: operational green, warning amber, critical red, data blue
+   - Typography: Space Grotesk (UI) + IBM Plex Mono (data values)
+   - Motion: 150-200ms ease-out for panels, instant for data snaps
+   ============================================================ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* IIoT Custom Semantic Colors */
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
+  --color-status-critical: var(--status-critical);
+  --color-status-offline: var(--status-offline);
+  --color-data-blue: var(--data-blue);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+}
+
+:root {
+  --radius: 0.375rem;
+
+  /* Deep space navy palette */
+  --background: oklch(0.09 0.025 240);
+  --foreground: oklch(0.92 0.01 220);
+  --card: oklch(0.12 0.025 240);
+  --card-foreground: oklch(0.92 0.01 220);
+  --popover: oklch(0.13 0.025 240);
+  --popover-foreground: oklch(0.92 0.01 220);
+
+  /* Primary: electric cyan-blue */
+  --primary: oklch(0.65 0.18 220);
+  --primary-foreground: oklch(0.08 0.02 240);
+
+  /* Secondary: muted navy */
+  --secondary: oklch(0.16 0.025 240);
+  --secondary-foreground: oklch(0.75 0.01 220);
+
+  --muted: oklch(0.15 0.02 240);
+  --muted-foreground: oklch(0.55 0.015 230);
+
+  --accent: oklch(0.18 0.03 240);
+  --accent-foreground: oklch(0.85 0.01 220);
+
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.65 0.18 220);
+
+  /* Chart colors */
+  --chart-1: oklch(0.65 0.18 220);
+  --chart-2: oklch(0.65 0.18 155);
+  --chart-3: oklch(0.72 0.18 85);
+  --chart-4: oklch(0.62 0.22 25);
+  --chart-5: oklch(0.65 0.18 280);
+
+  /* Sidebar */
+  --sidebar: oklch(0.10 0.025 240);
+  --sidebar-foreground: oklch(0.85 0.01 220);
+  --sidebar-primary: oklch(0.65 0.18 220);
+  --sidebar-primary-foreground: oklch(0.08 0.02 240);
+  --sidebar-accent: oklch(0.15 0.025 240);
+  --sidebar-accent-foreground: oklch(0.85 0.01 220);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.65 0.18 220);
+
+  /* IIoT Semantic Status Colors */
+  --status-ok: oklch(0.65 0.18 155);
+  --status-warn: oklch(0.72 0.18 85);
+  --status-critical: oklch(0.62 0.22 25);
+  --status-offline: oklch(0.45 0.01 240);
+  --data-blue: oklch(0.65 0.18 220);
+  --panel: oklch(0.11 0.025 240);
+  --panel-border: oklch(0.65 0.18 220 / 25%);
+}
+
+/* Force dark theme always for this SCADA dashboard */
+html {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 1440px;
+    }
+  }
+
+  /* Monospace data values */
+  .font-data {
+    font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+  }
+
+  /* Glowing panel border */
+  .panel-glow {
+    border: 1px solid oklch(0.65 0.18 220 / 25%);
+    box-shadow: 0 0 0 1px oklch(0.65 0.18 220 / 8%), inset 0 1px 0 oklch(1 0 0 / 5%);
+  }
+
+  /* Zone status glow effects */
+  .zone-ok {
+    box-shadow: 0 0 12px oklch(0.65 0.18 155 / 40%), inset 0 0 20px oklch(0.65 0.18 155 / 8%);
+    border-color: oklch(0.65 0.18 155 / 60%) !important;
+  }
+  .zone-warn {
+    box-shadow: 0 0 12px oklch(0.72 0.18 85 / 40%), inset 0 0 20px oklch(0.72 0.18 85 / 8%);
+    border-color: oklch(0.72 0.18 85 / 60%) !important;
+  }
+  .zone-critical {
+    box-shadow: 0 0 12px oklch(0.62 0.22 25 / 50%), inset 0 0 20px oklch(0.62 0.22 25 / 10%);
+    border-color: oklch(0.62 0.22 25 / 70%) !important;
+  }
+  .zone-offline {
+    box-shadow: none;
+    border-color: oklch(0.35 0.01 240 / 50%) !important;
+  }
+  .zone-selected {
+    box-shadow: 0 0 20px oklch(0.65 0.18 220 / 60%), inset 0 0 30px oklch(0.65 0.18 220 / 12%);
+    border-color: oklch(0.65 0.18 220 / 90%) !important;
+  }
+
+  /* Pulsing animation for live data indicator */
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .pulse-live {
+    animation: pulse-live 1.5s ease-in-out infinite;
+  }
+
+  /* Scan line effect */
+  @keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+
+  /* Number count-up animation */
+  @keyframes count-up {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .count-up {
+    animation: count-up 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  /* Alert pulse */
+  @keyframes alert-pulse {
+    0%, 100% { box-shadow: 0 0 8px oklch(0.62 0.22 25 / 60%); }
+    50% { box-shadow: 0 0 20px oklch(0.62 0.22 25 / 90%); }
+  }
+  .alert-pulse {
+    animation: alert-pulse 1s ease-in-out infinite;
+  }
+
+  /* Ticker scroll */
+  @keyframes ticker-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .ticker-scroll {
+    animation: ticker-scroll 30s linear infinite;
+  }
+
+  /* Grid dot background pattern */
+  .dot-grid-bg {
+    background-image: radial-gradient(circle, oklch(0.65 0.18 220 / 15%) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Hairline separator */
+  .hairline {
+    border-top: 1px solid oklch(1 0 0 / 8%);
+  }
+}

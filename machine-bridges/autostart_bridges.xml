@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Tasks>
+  <!-- Haas TL-1 Bridge — auto-start on Windows login -->
+  <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+    <RegistrationInfo>
+      <Description>IIoT Bridge: Haas TL-1 Q-Command to WebSocket</Description>
+      <Author>IIoT Dashboard</Author>
+    </RegistrationInfo>
+    <Triggers>
+      <LogonTrigger>
+        <Enabled>true</Enabled>
+      </LogonTrigger>
+    </Triggers>
+    <Principals>
+      <Principal id="Author">
+        <LogonType>InteractiveToken</LogonType>
+        <RunLevel>HighestAvailable</RunLevel>
+      </Principal>
+    </Principals>
+    <Settings>
+      <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+      <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+      <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+      <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+      <RestartOnFailure>
+        <Interval>PT1M</Interval>
+        <Count>999</Count>
+      </RestartOnFailure>
+    </Settings>
+    <Actions Context="Author">
+      <Exec>
+        <Command>python</Command>
+        <Arguments>C:\iiot-bridges\haas_bridge.py</Arguments>
+        <WorkingDirectory>C:\iiot-bridges</WorkingDirectory>
+      </Exec>
+    </Actions>
+  </Task>
+</Tasks>

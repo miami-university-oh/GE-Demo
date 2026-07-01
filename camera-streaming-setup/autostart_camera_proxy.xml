@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  autostart_camera_proxy.xml
+  Import this into Windows Task Scheduler to auto-start the camera proxy on boot.
+
+  How to import:
+    1. Open Task Scheduler (search "Task Scheduler" in Start Menu)
+    2. Click "Import Task..." in the right panel
+    3. Select this file
+    4. Edit the <WorkingDirectory> and <Command> paths to match where you placed the files
+    5. Click OK — the proxy will now start automatically on Windows startup
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>IIoT Dashboard Camera Proxy (mediamtx) — starts on boot</Description>
+    <Author>IIoT Dashboard</Author>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT15S</Delay>
+    </BootTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions>
+    <Exec>
+      <!-- EDIT THIS PATH to match where you placed the files -->
+      <Command>C:\iiot-camera-proxy\mediamtx.exe</Command>
+      <Arguments>C:\iiot-camera-proxy\mediamtx.yml</Arguments>
+      <WorkingDirectory>C:\iiot-camera-proxy\</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
