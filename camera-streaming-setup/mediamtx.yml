@@ -147,7 +147,7 @@ authJWTAudience:
 # Global settings -> Control API
 
 # Enable the control API server, which allows to control the server.
-api: false
+api: true
 # Address of the TCP/HTTP listener.
 apiAddress: :9997
 # Enable HTTPS.
@@ -250,9 +250,9 @@ rtspTransports: [udp, multicast, tcp]
 # Available values are "no", "strict", "optional".
 rtspEncryption: "no"
 # Address of the TCP/RTSP listener. This is needed only when encryption is "no" or "optional".
-rtspAddress: :8554
+rtspAddress: :8556
 # Address of the TCP/RTSPS listener. This is needed only when encryption is "strict" or "optional".
-rtspsAddress: :8322
+rtspsAddress: :8324
 # Address of the UDP/RTP listener. This is needed only when "udp" is in rtspTransports and encryption is "no" or "optional".
 rtpAddress: :8002
 # Address of the UDP/RTCP listener. This is needed only when "udp" is in rtspTransports and encryption is "no" or "optional".
@@ -295,9 +295,9 @@ rtmp: true
 # Available values are "no", "strict", "optional".
 rtmpEncryption: "no"
 # Address of the TCP/RTMP listener. This is needed only when encryption is "no" or "optional".
-rtmpAddress: :1935
+rtmpAddress: :1937
 # Address of the TCP/RTMPS listener. This is needed only when encryption is "strict" or "optional".
-rtmpsAddress: :1936
+rtmpsAddress: :1938
 # Path to the server key. This is needed only when encryption is "strict" or "optional".
 # This can be generated with:
 # openssl genrsa -out server.key 2048
@@ -316,7 +316,7 @@ rtmpTrustedProxies: []
 # Enable the HLS server, which allows to read streams with the HLS protocol.
 hls: true
 # Address of the TCP/HTTP listener.
-hlsAddress: :8888
+hlsAddress: :18888
 # Enable HTTPS.
 # This is required for Low-Latency HLS to function correctly on Apple devices.
 hlsEncryption: false
@@ -379,7 +379,7 @@ hlsCDNSecret: ""
 # Enable the WebRTC server, which allows to publish and read streams with the WebRTC protocol.
 webrtc: true
 # Address of the WebRTC TCP/HTTP listener.
-webrtcAddress: :8889
+webrtcAddress: :18889
 # Enable HTTPS.
 # This covers only the WebRTC handshake, while WebRTC streams
 # are always encrypted with a key that is exchanged during the WebRTC handshake.
@@ -400,7 +400,7 @@ webrtcAllowOrigins: ["*"]
 webrtcTrustedProxies: []
 # Address of a UDP/ICE listener that will receive connections.
 # Use a blank string to disable.
-webrtcLocalUDPAddress: :8189
+webrtcLocalUDPAddress: :18189
 # Address of a TCP/ICE listener that will receive connections.
 # This is disabled by default since TCP is less efficient than UDP and
 # introduces a progressive delay when network is congested.
@@ -436,7 +436,7 @@ webrtcTrackGatherTimeout: 2s
 # Enable the SRT server, which allows to publish and read streams with the SRT protocol.
 srt: true
 # Address of the UDP/SRT listener.
-srtAddress: :8890
+srtAddress: :18890
 
 ###############################################
 # MoQ server
@@ -822,9 +822,18 @@ pathDefaults:
 # for example "~^(test1|test2)$" will match both "test1" and "test2",
 # for example "~^prefix" will match all paths that start with "prefix".
 paths:
-  # example:
-  # my_camera:
-  #   source: rtsp://my_camera
+  # CAM-02: Amcrest IP camera — pulled directly from RTSP
+  cam02:
+    source: rtsp://admin:admin@192.168.1.108/cam/realmonitor?channel=1&subtype=0
+    sourceOnDemand: false
+
+  # CAM-01: Intel RealSense L515
+  # This path waits for the realsense_stream.py script to publish via RTSP.
+  # Run: ffmpeg -f mjpeg -i http://127.0.0.1:5001/video_feed \
+  #             -c:v libx264 -preset ultrafast -tune zerolatency \
+  #             -f rtsp rtsp://127.0.0.1:8556/cam01
+  cam01:
+    source: publisher
 
   # Settings under path "all_others" are applied to all paths that
   # do not match another entry.

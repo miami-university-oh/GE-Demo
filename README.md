@@ -132,7 +132,7 @@ This runs on the server PC at `192.168.1.15`.
 
 Once running, the HLS stream is at:
 ```
-http://192.168.1.15:8888/cam02/index.m3u8
+http://192.168.1.15:18888/cam02/index.m3u8
 ```
 
 The dashboard CAM-02 tile switches to live video automatically.
@@ -227,7 +227,7 @@ Use this order when bringing up the full system:
 | `8211` | Isaac Sim viewport stream |
 | `8765` | Haas TL-1 WebSocket bridge |
 | `8766` | UR5e WebSocket bridge |
-| `8888` | mediamtx HLS proxy (CAM-02) |
+`18888` | mediamtx HLS proxy (CAM-02) |
 | `9997` | mediamtx API health check |
 
 ---
