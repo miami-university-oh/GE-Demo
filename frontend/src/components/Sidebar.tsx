@@ -1,9 +1,12 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useEquipmentStore } from '../stores/equipmentStore';
+import { ViewToggle } from './ViewToggle';
 
 export const Sidebar: React.FC = () => {
   const wsConnected = useEquipmentStore(s => s.wsConnected);
+  // The toggle only affects the lab overview, so it hides on other pages.
+  const onLabPage = useLocation().pathname === '/';
 
   return (
     <aside className="sidebar">
@@ -27,6 +30,8 @@ export const Sidebar: React.FC = () => {
           CAMERA FEEDS
         </NavLink>
       </nav>
+
+      {onLabPage && <ViewToggle />}
 
       <div className="sidebar-status">
         <div className={`status-dot ${wsConnected ? 'connected' : 'disconnected'}`} />
