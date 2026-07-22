@@ -1,0 +1,5 @@
+# Host-side camera publisher (runs outside Docker, on the machine with the USB camera)
+opencv-python>=4.10.0
+requests>=2.32.0
+python-dotenv>=1.0.0
+pygrabber>=0.2 ; sys_platform == "win32"

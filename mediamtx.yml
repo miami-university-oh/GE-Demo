@@ -16,6 +16,6 @@ webrtcAddress: ""
 
 paths:
   cam02:
-    source: rtsp://admin:your_password_here@192.168.1.108/cam/realmonitor?channel=1&subtype=0
+    # source is injected by the backend as MTX_PATHS_CAM02_SOURCE, built from .env
     sourceProtocol: tcp
     sourceOnDemand: false

@@ -1,0 +1,11 @@
+# Keep the build context small: none of this is needed inside the image
+.git
+.venv
+venv
+**/__pycache__
+frontend/node_modules
+frontend/dist
+publisher
+mediamtx
+*.pt
+.env

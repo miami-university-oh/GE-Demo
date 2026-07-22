@@ -12,13 +12,17 @@ FROM python:3.11-slim AS production
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libusb-1.0-0 \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# CPU-only torch first: the default CUDA build adds multiple GB the container cannot use
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Bake the YOLO pose weights into the image so the container needs no internet at runtime
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n-pose.pt')"
 
 COPY backend/ ./backend/
 

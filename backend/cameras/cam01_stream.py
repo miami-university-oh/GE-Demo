@@ -1,24 +1,20 @@
+import hmac
 import threading
 import time
 import logging
 import cv2
 import numpy as np
 from datetime import datetime
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi.responses import Response, StreamingResponse
+
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
 camera_router = APIRouter()
 
-HAS_REALSENSE = False
 HAS_YOLO = False
-
-try:
-    import pyrealsense2 as rs
-    HAS_REALSENSE = True
-except ImportError:
-    pass
 
 try:
     from ultralytics import YOLO
@@ -28,14 +24,24 @@ except ImportError:
 
 WIDTH = 640
 HEIGHT = 480
-FPS = 30
 JPEG_QUALITY = 85
 
-# State
+# Docker Desktop on Windows cannot pass USB devices into the container, so the
+# camera is captured by publisher/cam01_publisher.py on the host and pushed here
+# as JPEG frames over HTTP. The publisher can run on any machine on the network.
+INGEST_STALE_SECS = 5.0
+
+# Ingest state (written by the POST handler, read by the processing thread)
+latest_ingest_jpeg = None
+last_ingest_time = 0.0
+ingest_lock = threading.Lock()
+new_frame_event = threading.Event()
+
+# Output state (written by the processing thread, read by the MJPEG generators)
 latest_raw_frame = None
 latest_yolo_frame = None
+frame_seq = 0
 frame_lock = threading.Lock()
-running = False
 
 # YOLO config
 CONF_THRESH = 0.5
@@ -68,12 +74,6 @@ def generate_placeholder_frame(message: str):
     cv2.putText(frame, message, (text_x, text_y), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
     ret, jpeg = cv2.imencode('.jpg', frame)
     return jpeg.tobytes()
-
-def generate_frames_fallback(message: str):
-    jpeg_bytes = generate_placeholder_frame(message)
-    while True:
-        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
-        time.sleep(1)
 
 def _in_zone(px, py):
     cx, cy = WIDTH // 2, HEIGHT // 2
@@ -128,41 +128,56 @@ def _draw_timestamp(img, extra=""):
     cv2.putText(img, f"CAM-01 {extra} - {ts}", (12, HEIGHT - 12),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 220, 180), 1, cv2.LINE_AA)
 
-def capture_thread():
-    global latest_raw_frame, latest_yolo_frame, running
-    
-    pipeline = rs.pipeline()
-    config = rs.config()
-    config.enable_stream(rs.stream.color, WIDTH, HEIGHT, rs.format.bgr8, FPS)
-    
-    try:
-        pipeline.start(config)
-        logger.info(f"RealSense pipeline started: {WIDTH}x{HEIGHT} @ {FPS} FPS")
-    except Exception as e:
-        logger.error(f"Failed to start RealSense: {e}")
-        running = False
-        return
-        
+def ingest_is_live():
+    return last_ingest_time > 0 and (time.time() - last_ingest_time) < INGEST_STALE_SECS
+
+def _decode_latest_ingest():
+    with ingest_lock:
+        jpeg = latest_ingest_jpeg
+    if jpeg is None:
+        return None
+    img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    # Publishers may send a different resolution; the overlay math assumes 640x480.
+    if img.shape[1] != WIDTH or img.shape[0] != HEIGHT:
+        img = cv2.resize(img, (WIDTH, HEIGHT))
+    return img
+
+def _publish_frames(buf_raw, buf_yolo):
+    global latest_raw_frame, latest_yolo_frame, frame_seq
+    with frame_lock:
+        latest_raw_frame = buf_raw
+        latest_yolo_frame = buf_yolo
+        frame_seq += 1
+
+def process_thread():
     model = None
     if HAS_YOLO:
         model = YOLO("yolov8n-pose.pt")
-        
+        logger.info("YOLO pose model loaded for cam01")
+    else:
+        logger.warning("ultralytics not available, cam01 yolo feed will mirror the raw feed")
+
     frame_count = 0
     last_dets = []
-    
-    while running:
+
+    while True:
+        # Wake when the publisher POSTs a frame; the timeout keeps the loop
+        # responsive so a stopped publisher does not leave us blocked forever.
+        if not new_frame_event.wait(timeout=1.0):
+            continue
+        new_frame_event.clear()
+
         try:
-            frames = pipeline.wait_for_frames(timeout_ms=5000)
-            color_frame = frames.get_color_frame()
-            if not color_frame:
+            img = _decode_latest_ingest()
+            if img is None:
                 continue
-                
-            img = np.asanyarray(color_frame.get_data())
+
             raw_img = img.copy()
             _draw_timestamp(raw_img, "RAW")
-            
             _, buf_raw = cv2.imencode(".jpg", raw_img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-            
+
             yolo_img = img.copy()
             if HAS_YOLO:
                 frame_count += 1
@@ -188,7 +203,7 @@ def capture_thread():
                                 "keypoints": kps, "alert_kps": list(alert_kps), "alert_names": alert_names
                             })
                     last_dets = dets
-                
+
                 all_alert_names = []
                 for p in last_dets:
                     alert = bool(p["alert_kps"])
@@ -196,55 +211,69 @@ def capture_thread():
                     _draw_person(yolo_img, x1, y1, x2, y2, p["conf"], alert)
                     _draw_keypoints(yolo_img, p["keypoints"], set(p["alert_kps"]))
                     all_alert_names.extend(p["alert_names"])
-                    
+
                 _draw_zone(yolo_img)
                 _draw_banner(yolo_img, len(last_dets), all_alert_names)
                 _draw_timestamp(yolo_img, "YOLO")
-                
+
                 _, buf_yolo = cv2.imencode(".jpg", yolo_img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
             else:
                 buf_yolo = buf_raw
-                
-            with frame_lock:
-                latest_raw_frame = buf_raw.tobytes()
-                latest_yolo_frame = buf_yolo.tobytes()
-                
-        except Exception as e:
-            logger.error(f"Capture error: {e}")
-            time.sleep(0.1)
-            
-    pipeline.stop()
 
-if HAS_REALSENSE:
-    running = True
-    threading.Thread(target=capture_thread, daemon=True).start()
+            _publish_frames(buf_raw.tobytes(), buf_yolo.tobytes())
+
+        except Exception as e:
+            logger.error(f"cam01 processing error: {e}")
+            time.sleep(0.1)
+
+threading.Thread(target=process_thread, daemon=True).start()
+
+def _mjpeg_part(jpeg_bytes):
+    return b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
 
 def stream_mjpeg(feed_type):
-    if not HAS_REALSENSE:
-        yield from generate_frames_fallback(f"{feed_type.upper()} STREAM (SIMULATED)")
-        return
-        
+    placeholder = generate_placeholder_frame("WAITING FOR CAM01 PUBLISHER")
+    last_seq = -1
     while True:
-        with frame_lock:
-            frame = latest_yolo_frame if feed_type == "yolo" else latest_raw_frame
-        if frame is None:
-            if not running:
-                yield from generate_frames_fallback(f"{feed_type.upper()} STREAM (FAILED)")
-                return
-            time.sleep(0.1)
+        if not ingest_is_live():
+            yield _mjpeg_part(placeholder)
+            last_seq = -1
+            time.sleep(1.0)
             continue
-        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+        with frame_lock:
+            seq = frame_seq
+            frame = latest_yolo_frame if feed_type == "yolo" else latest_raw_frame
+        # Only forward frames we have not sent yet, at the rate they arrive.
+        if frame is None or seq == last_seq:
+            time.sleep(0.01)
+            continue
+        last_seq = seq
+        yield _mjpeg_part(frame)
+
+@camera_router.post("/api/cam01/ingest")
+async def cam01_ingest(request: Request, x_ingest_token: str = Header(default="")):
+    global latest_ingest_jpeg, last_ingest_time
+    if not hmac.compare_digest(x_ingest_token, settings.cam01_ingest_token):
+        raise HTTPException(status_code=401, detail="invalid ingest token")
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="empty frame")
+    with ingest_lock:
+        latest_ingest_jpeg = body
+        last_ingest_time = time.time()
+    new_frame_event.set()
+    return Response(status_code=204)
 
 @camera_router.get("/api/cam01/feed")
 async def cam01_feed():
     return StreamingResponse(
-        stream_mjpeg("raw"), 
+        stream_mjpeg("raw"),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 @camera_router.get("/api/cam01/yolo_feed")
 async def cam01_yolo_feed():
     return StreamingResponse(
-        stream_mjpeg("yolo"), 
+        stream_mjpeg("yolo"),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )

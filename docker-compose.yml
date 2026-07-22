@@ -3,11 +3,9 @@ services:
     build: .
     image: iiot-dashboard:latest
     container_name: iiot-dashboard
+    # Single exposed port: cam02 HLS is proxied through the backend, mediamtx stays internal
     ports:
       - "8000:8000"
-      - "8888:8888"
-      - "8554:8554"
-      - "9997:9997"
     env_file: .env
     restart: unless-stopped
     volumes:

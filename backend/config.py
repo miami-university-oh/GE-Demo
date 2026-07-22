@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     amcrest_ip: str = "192.168.1.108"
     amcrest_rtsp_user: str = "admin"
     amcrest_rtsp_pass: str = ""
+    cam01_ingest_token: str = "makino-cam01"
     backend_port: int = 8000
     ur5e_http_api_key: str = "makino-lab"
     haas_poll_interval: float = 1.0
